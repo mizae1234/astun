@@ -106,12 +106,24 @@ export default function POSPage() {
   }, [cart, selectedCompany, selectedWarehouse, initialized]);
   useEffect(() => { saveState(); }, [saveState]);
 
-  useEffect(() => { getCompanies().then((c: any) => setCompanies(c)); }, []);
+  useEffect(() => { 
+    getCompanies().then((c: any) => {
+      setCompanies(c);
+      if (c.length > 0) {
+        setSelectedCompany((prev) => prev || c[0].id);
+      }
+    }); 
+  }, []);
   useEffect(() => { getBankAccounts().then((b: any) => setBankAccounts(b)); }, []);
 
   useEffect(() => {
     if (selectedCompany) {
-      getCompanyWarehouses(selectedCompany).then((w: any) => setWarehouses(w));
+      getCompanyWarehouses(selectedCompany).then((w: any) => {
+        setWarehouses(w);
+        if (w.length > 0) {
+          setSelectedWarehouse((prev) => prev || w[0].id);
+        }
+      });
     }
   }, [selectedCompany]);
 
