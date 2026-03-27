@@ -210,6 +210,52 @@ export default function SalesReportPage() {
               )}
             </div>
           </div>
+
+          {/* Revenue by Branch */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Store className="w-5 h-5 text-indigo-600" />
+              สรุปยอดขายแยกตามสาขา
+            </h2>
+            
+            {data.revenueByBranch && data.revenueByBranch.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-gray-500 uppercase bg-gray-50/50">
+                    <tr>
+                      <th className="px-4 py-3 font-medium rounded-l-lg">สาขา</th>
+                      <th className="px-4 py-3 font-medium text-right">จำนวนสลิป/บิล</th>
+                      <th className="px-4 py-3 font-medium text-right rounded-r-lg">ยอดขายรวม</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.revenueByBranch.map((b: any) => (
+                      <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900">{b.name}</td>
+                        <td className="px-4 py-3 text-right text-gray-500">{b.orders.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-600">{formatCurrency(b.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {data.revenueByBranch.length > 1 && (
+                    <tfoot className="border-t-2 border-gray-100">
+                      <tr>
+                        <td className="px-4 py-4 font-bold text-gray-900">รวมทั้งหมด</td>
+                        <td className="px-4 py-4 text-right font-bold text-gray-900">
+                          {data.revenueByBranch.reduce((sum: number, b: any) => sum + b.orders, 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-4 text-right font-bold text-blue-600">
+                          {formatCurrency(data.totalRevenue)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-10 text-gray-400 text-sm">ไม่มีข้อมูลการขายแยกตามสาขา</div>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -31,6 +31,7 @@ export async function getSalesReportData(startDateIso: string, endDateIso: strin
       status: "DELIVERED",
     },
     include: {
+      branch: { select: { name: true } },
       items: {
         include: {
           productVariant: {
@@ -49,11 +50,21 @@ export async function getSalesReportData(startDateIso: string, endDateIso: strin
   const dailySalesMap = new Map<string, number>();
   // Group by Product for Top Products
   const productMap = new Map<string, { id: string, name: string, variant: string, qty: number, revenue: number }>();
+  // Group by Branch
+  const branchMap = new Map<string, { id: string, name: string, revenue: number, orders: number }>();
 
   for (const order of orders) {
-    // shift to local time representation for grouping if needed, but ISO string split is okay for simple charts
     const dateStr = order.createdAt.toISOString().split("T")[0];
     dailySalesMap.set(dateStr, (dailySalesMap.get(dateStr) || 0) + order.totalAmount);
+
+    // Branch grouping
+    const bId = order.branchId;
+    if (!branchMap.has(bId)) {
+      branchMap.set(bId, { id: bId, name: order.branch?.name || "ไม่ระบุสาขา", revenue: 0, orders: 0 });
+    }
+    const b = branchMap.get(bId)!;
+    b.revenue += order.totalAmount;
+    b.orders += 1;
 
     for (const item of order.items) {
       const vid = item.productVariantId;
@@ -97,6 +108,9 @@ export async function getSalesReportData(startDateIso: string, endDateIso: strin
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
+  const revenueByBranch = Array.from(branchMap.values())
+    .sort((a, b) => b.revenue - a.revenue);
+
   return {
     totalRevenue,
     totalOrders,
@@ -104,5 +118,6 @@ export async function getSalesReportData(startDateIso: string, endDateIso: strin
     chartData,
     maxDailyRevenue: maxRevenue,
     topProducts,
+    revenueByBranch,
   };
 }
