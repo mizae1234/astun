@@ -1,32 +1,43 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, AlertTriangle } from "lucide-react";
-import { getInventory } from "@/actions/data";
+import { Search, AlertTriangle, Filter } from "lucide-react";
+import { getInventory, getWarehouses } from "@/actions/data";
 import Pagination from "@/components/ui/Pagination";
 
 export default function InventoryPage() {
   const [stocks, setStocks] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
   const [searchTimeout, setSearchTimeout] = useState<any>(null);
 
-  const load = useCallback((p: number, s: string) => {
-    getInventory(p, 20, s).then((res: any) => {
+  const load = useCallback((p: number, s: string, wId: string) => {
+    getInventory(p, 20, s, wId).then((res: any) => {
       setStocks(res.data || []);
       setTotalPages(res.totalPages || 0);
       setTotal(res.total || 0);
     });
   }, []);
 
-  useEffect(() => { load(1, ""); }, [load]);
+  useEffect(() => { 
+    load(1, "", ""); 
+    getWarehouses().then(setWarehouses);
+  }, [load]);
 
   const handleSearch = (val: string) => {
     setSearch(val);
     if (searchTimeout) clearTimeout(searchTimeout);
-    setSearchTimeout(setTimeout(() => { setPage(1); load(1, val); }, 400));
+    setSearchTimeout(setTimeout(() => { setPage(1); load(1, val, warehouseId); }, 400));
+  };
+
+  const handleWarehouseChange = (val: string) => {
+    setWarehouseId(val);
+    setPage(1);
+    load(1, search, val);
   };
 
   const lowCount = stocks.filter((s: any) => s.quantity <= s.minQuantity).length;
@@ -40,17 +51,34 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input type="text" placeholder="ค้นหาสินค้า หรือ SKU..." value={search} onChange={(e) => handleSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white text-sm" />
         </div>
-        {lowCount > 0 && (
-          <span className="px-4 py-2.5 bg-yellow-100 text-yellow-700 rounded-xl text-sm font-medium flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> ใกล้หมด ({lowCount})
-          </span>
-        )}
+        
+        <div className="w-full sm:w-auto flex items-center gap-2">
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <select
+              value={warehouseId}
+              onChange={(e) => handleWarehouseChange(e.target.value)}
+              className="pl-9 pr-8 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white text-sm appearance-none min-w-[180px]"
+            >
+              <option value="">คลังสินค้าทั้งหมด</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name} ({w.branch.name})</option>
+              ))}
+            </select>
+          </div>
+
+          {lowCount > 0 && (
+            <span className="px-4 py-2.5 bg-yellow-100 text-yellow-700 rounded-xl text-sm font-medium flex items-center gap-2 shrink-0">
+              <AlertTriangle className="w-4 h-4" /> ใกล้หมด ({lowCount})
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -93,7 +121,7 @@ export default function InventoryPage() {
         </table>
       </div>
 
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={(p) => { setPage(p); load(p, search); }} />
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={(p) => { setPage(p); load(p, search, warehouseId); }} />
     </div>
   );
 }

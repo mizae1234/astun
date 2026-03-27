@@ -129,11 +129,21 @@ export async function approvePurchaseOrder(id: string) {
   });
 }
 
+export async function updatePurchaseOrderStatus(id: string, status: any) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+
+  return prisma.purchaseOrder.update({
+    where: { id },
+    data: { status }
+  });
+}
+
 export async function getApprovedPOsForReceiving(companyId: string) {
   return prisma.purchaseOrder.findMany({
     where: {
       companyId,
-      status: { in: ["APPROVED", "PARTIAL_RECEIVED"] }
+      status: { in: ["APPROVED", "IN_PRODUCTION", "SHIPPED", "ARRIVED_AT_PORT", "PARTIAL_RECEIVED"] }
     },
     include: {
       supplier: { select: { id: true, name: true, phone: true } },

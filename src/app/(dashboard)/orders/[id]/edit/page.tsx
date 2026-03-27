@@ -9,6 +9,7 @@ import {
 import { updateOrder } from "@/actions/mutations";
 import { getPOSProducts, getCompanyWarehouses } from "@/actions/goods-receiving";
 import { getCompanies, getOrderById } from "@/actions/data";
+import { getBankAccounts } from "@/actions/finance";
 import { searchCustomersByPhone } from "@/actions/customer";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -66,6 +67,8 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   const [addonAmount, setAddonAmount] = useState(0);
   const [addonLabel, setAddonLabel] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER" | "CREDIT">("CASH");
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [dueDate, setDueDate] = useState("");
   const [customerFound, setCustomerFound] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -91,6 +94,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       setAddonAmount(order.addonAmount);
       setAddonLabel(order.addonLabel || "");
       setPaymentMethod(order.paymentMethod as any || "CASH");
+      setBankAccountId(order.bankAccountId || "");
       if (order.dueDate) setDueDate(new Date(order.dueDate).toISOString().split('T')[0]);
       
       // We will load cart after products are loaded
@@ -99,6 +103,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   }, [id, router]);
 
   useEffect(() => { getCompanies().then((c: any) => setCompanies(c)); }, []);
+  useEffect(() => { getBankAccounts().then((b: any) => setBankAccounts(b)); }, []);
 
   useEffect(() => {
     if (selectedCompany) {
@@ -302,13 +307,14 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
         addonAmount: addonAmount > 0 ? addonAmount : undefined,
         addonLabel: addonLabel || undefined,
         paymentMethod,
+        bankAccountId: paymentMethod === "TRANSFER" ? bankAccountId : undefined,
         dueDate: paymentMethod === "CREDIT" && dueDate ? dueDate : undefined,
       });
       clearCart();
       setShowConfirm(false);
       setCustomerName(""); setCustomerPhone(""); setCustomerAddress("");
       setNote(""); setDiscount(0); setAddonAmount(0); setAddonLabel("");
-      setPaymentMethod("CASH"); setDueDate("");
+      setPaymentMethod("CASH"); setBankAccountId(""); setDueDate("");
       router.push("/orders");
     } catch (e: any) {
       setError(e.message || "เกิดข้อผิดพลาด");
@@ -577,6 +583,18 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                     <label className="text-xs font-medium text-gray-500 mb-1 block">วันครบกำหนดชำระ</label>
                     <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
                       className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm bg-amber-50 focus:ring-2 focus:ring-amber-400 outline-none" />
+                  </div>
+                )}
+                {paymentMethod === "TRANSFER" && (
+                  <div className="mt-3">
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">โอนเข้าบัญชีไหน?</label>
+                    <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-blue-200 rounded-xl text-sm bg-blue-50 focus:ring-2 focus:ring-blue-400 outline-none">
+                      <option value="">-- เลือกบัญชีธนาคาร --</option>
+                      {bankAccounts.map((b) => (
+                        <option key={b.id} value={b.id}>{b.bankName} - {b.accountName} ({b.accountNumber})</option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>

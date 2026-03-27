@@ -129,7 +129,7 @@ export async function getProducts(categoryId?: string) {
   });
 }
 
-export async function getInventory(page = 1, pageSize = 20, search = "") {
+export async function getInventory(page = 1, pageSize = 20, search = "", warehouseId = "") {
   const user = await getSession();
   if (!user) return { data: [], total: 0, totalPages: 0, page: 1 };
 
@@ -139,6 +139,9 @@ export async function getInventory(page = 1, pageSize = 20, search = "") {
       : { companyId: user.companyId! };
 
   const where: any = { ...companyFilter };
+  if (warehouseId) {
+    where.warehouseId = warehouseId;
+  }
   if (search) {
     where.productVariant = { OR: [
       { name: { contains: search, mode: "insensitive" } },
@@ -402,4 +405,99 @@ export async function getUsers() {
     },
     orderBy: { name: "asc" },
   });
+}
+
+export async function getOwnerDashboardStats() {
+  const user = await getSession();
+  if (!user || (user.role !== "SUPER_ADMIN" && user.role !== "OWNER")) return null;
+
+  const companyFilter = {};
+  
+  const [
+    totalOrders,
+    totalPOs,
+    recentOrders,
+    recentExpenses,
+    orderRevenueGrouped,
+    branches,
+    expenseAgg,
+    revenueAgg,
+  ] = await Promise.all([
+    prisma.order.count({ where: companyFilter }),
+    prisma.purchaseOrder.count({ where: companyFilter }),
+    prisma.order.findMany({
+      where: { ...companyFilter },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      include: {
+        company: { select: { name: true } },
+        branch: { select: { name: true } },
+      },
+    }),
+    prisma.expense.findMany({
+      where: { ...companyFilter, isActive: true },
+      orderBy: { date: "desc" },
+      take: 6,
+      include: {
+        category: { select: { name: true } },
+        branch: { select: { name: true } }
+      },
+    }),
+    prisma.order.groupBy({
+      by: ["branchId"],
+      where: { ...companyFilter, status: "DELIVERED" },
+      _sum: { totalAmount: true },
+    }),
+    prisma.branch.findMany({ where: companyFilter, select: { id: true, name: true, company: { select: { name: true } } } }),
+    prisma.expense.aggregate({
+      where: { ...companyFilter, isActive: true },
+      _sum: { amount: true },
+    }),
+    prisma.order.aggregate({
+      where: { ...companyFilter, status: "DELIVERED" },
+      _sum: { totalAmount: true },
+    })
+  ]);
+
+  const totalRevenue = revenueAgg._sum.totalAmount || 0;
+  const totalExpenseAmount = expenseAgg._sum.amount || 0;
+  const netProfit = totalRevenue - totalExpenseAmount;
+
+  const revenueByBranch = branches.map((b: any) => {
+    const branchData = orderRevenueGrouped.find((g: any) => g.branchId === b.id);
+    return {
+      branchName: b.name,
+      companyName: b.company.name,
+      revenue: branchData?._sum.totalAmount || 0,
+    };
+  }).sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 10);
+
+  return {
+    stats: {
+      totalRevenue,
+      totalExpenseAmount,
+      netProfit,
+      totalOrders,
+      totalPOs,
+    },
+    revenueByBranch,
+    recentOrders: recentOrders.map((o: any) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      totalAmount: o.totalAmount,
+      status: o.status,
+      branchName: o.branch.name,
+      createdAt: o.createdAt.toISOString(),
+    })),
+    recentExpenses: recentExpenses.map((e: any) => ({
+      id: e.id,
+      expenseNumber: e.expenseNumber,
+      title: e.title,
+      amount: e.amount,
+      categoryName: e.category.name,
+      branchName: e.branch.name,
+      date: e.date.toISOString(),
+    }))
+  };
 }

@@ -55,6 +55,9 @@ enum POStatus {
   DRAFT
   PENDING
   APPROVED
+  IN_PRODUCTION      // อยู่ระหว่างการผลิต
+  SHIPPED            // ขึ้นตู้
+  ARRIVED_AT_PORT    // ถึงท่าเรือไทย
   PARTIAL_RECEIVED
   COMPLETED
   CANCELLED
@@ -129,6 +132,10 @@ model Company {
 
   // Goods Receiving
   goodsReceivings GoodsReceiving[]
+
+  // Expenses
+  expenseCategories ExpenseCategory[]
+  expenses          Expense[]
 }
 
 model Customer {
@@ -187,6 +194,8 @@ model BankAccount {
   updatedAt     DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders  Order[]
+  expenses Expense[]
 
   @@index([companyId])
 }
@@ -208,6 +217,7 @@ model Branch {
   orders        Order[]
   vehicles      Vehicle[]
   deliveryTrips DeliveryTrip[]
+  expenses      Expense[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -267,6 +277,9 @@ model User {
 
   poCreated  PurchaseOrder[] @relation("POCreatedBy")
   poApproved PurchaseOrder[] @relation("POApprovedBy")
+
+  expensesCreated  Expense[] @relation("ExpenseCreatedBy")
+  expensesApproved Expense[] @relation("ExpenseApprovedBy")
 
   @@index([companyId])
   @@index([branchId])
@@ -533,6 +546,7 @@ model Order {
   totalAmount     Float       @default(0) // ยอดสุทธิ = subtotal - discount + addon
   note            String?
   paymentMethod   String? // "CASH" | "TRANSFER" | "CREDIT"
+  bankAccountId   String? // ไอดีบัญชีธนาคาร (กรณีโอนเงิน)
   dueDate         DateTime? // วันครบกำหนด (เฉพาะค้างชำระ)
   companyId       String
   branchId        String
@@ -544,6 +558,7 @@ model Order {
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch        Branch         @relation(fields: [branchId], references: [id])
   warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
   items         OrderItem[]
   deliveryStops DeliveryStop[]
 
@@ -726,4 +741,57 @@ model GoodsReceivingItem {
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
 
   @@index([receivingId])
+}
+
+// ============================================================
+// EXPENSES (ค่าใช้จ่าย)
+// ============================================================
+
+model ExpenseCategory {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  companyId   String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expenses    Expense[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Expense {
+  id              String           @id @default(cuid())
+  expenseNumber   String           @unique
+  title           String
+  description     String?
+  amount          Float
+  date            DateTime
+  paymentMethod   String?          // CASH, TRANSFER, CREDIT
+  bankAccountId   String?
+  receiptUrl      String?
+  categoryId      String
+  companyId       String
+  branchId        String
+  createdById     String
+  approvedById    String?
+  status          String           @default("APPROVED") // PENDING, APPROVED, REJECTED
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  category        ExpenseCategory  @relation(fields: [categoryId], references: [id])
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  createdBy       User             @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  approvedBy      User?            @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  bankAccount     BankAccount?     @relation(fields: [bankAccountId], references: [id])
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([categoryId])
+  @@index([date])
 }

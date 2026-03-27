@@ -4,12 +4,12 @@ import { ArrowLeft, CheckCircle, Calendar, Building2, UserCircle, FileText } fro
 import Link from "next/link";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import POApproveButton from "./POApproveButton";
+import POStatusUpdater from "./POStatusUpdater";
 
-export default async function PurchaseOrderDetailPage({
-  params
-}: {
-  params: { id: string }
+export default async function PurchaseOrderDetailPage(props: {
+  params: Promise<{ id: string }>
 }) {
+  const params = await props.params;
   const po = await getPurchaseOrderById(params.id);
   
   if (!po) return notFound();
@@ -18,7 +18,10 @@ export default async function PurchaseOrderDetailPage({
     DRAFT: { label: "ร่าง", color: "bg-gray-100 text-gray-700" },
     PENDING: { label: "รออนุมัติ", color: "bg-amber-100 text-amber-700" },
     APPROVED: { label: "อนุมัติแล้ว", color: "bg-emerald-100 text-emerald-700" },
-    PARTIAL_RECEIVED: { label: "รับบางส่วน", color: "bg-blue-100 text-blue-700" },
+    IN_PRODUCTION: { label: "อยู่ระหว่างการผลิต", color: "bg-blue-100 text-blue-700" },
+    SHIPPED: { label: "ขึ้นตู้", color: "bg-indigo-100 text-indigo-700" },
+    ARRIVED_AT_PORT: { label: "ถึงท่าเรือไทย", color: "bg-cyan-100 text-cyan-700" },
+    PARTIAL_RECEIVED: { label: "รับบางส่วน", color: "bg-orange-100 text-orange-700" },
     COMPLETED: { label: "รับครบแล้ว", color: "bg-purple-100 text-purple-700" },
     CANCELLED: { label: "ยกเลิก", color: "bg-red-100 text-red-700" },
   };
@@ -41,8 +44,10 @@ export default async function PurchaseOrderDetailPage({
           </div>
         </div>
         
-        {po.status === "DRAFT" && (
+        {po.status === "DRAFT" ? (
           <POApproveButton poId={po.id} />
+        ) : (
+          <POStatusUpdater poId={po.id} currentStatus={po.status} />
         )}
       </div>
 

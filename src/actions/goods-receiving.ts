@@ -56,6 +56,73 @@ export async function createGoodsReceiving(data: {
   return { success: true, grId: gr.id, grNumber: gr.grNumber };
 }
 
+export async function updateGoodsReceiving(grId: string, data: {
+  supplierName: string;
+  supplierId?: string;
+  purchaseOrderId?: string;
+  supplierContact?: string;
+  invoiceNumber?: string;
+  warehouseId: string;
+  items: { productVariantId: string; expectedQty: number; unitCost: number }[];
+  note?: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+  if (user.role === "OWNER") throw new Error("OWNER ไม่สามารถแก้ไขข้อมูลได้");
+
+  const gr = await prisma.goodsReceiving.findUnique({ where: { id: grId } });
+  if (!gr) throw new Error("ไม่พบรายการรับสินค้า");
+  // Allow update only if PENDING or DRAFT. If INSPECTING, someone already started.
+  if (gr.status !== "PENDING" && gr.status !== "DRAFT") {
+    throw new Error("ไม่สามารถแก้ไขใบรับสินค้าที่ตรวจรับไปแล้วได้");
+  }
+
+  const totalAmount = data.items.reduce((sum, i) => sum + i.unitCost * i.expectedQty, 0);
+
+  await prisma.$transaction([
+    prisma.goodsReceivingItem.deleteMany({ where: { receivingId: grId } }),
+    prisma.goodsReceiving.update({
+      where: { id: grId },
+      data: {
+        supplierName: data.supplierName,
+        supplierId: data.supplierId,
+        purchaseOrderId: data.purchaseOrderId,
+        supplierContact: data.supplierContact,
+        invoiceNumber: data.invoiceNumber,
+        warehouseId: data.warehouseId,
+        totalAmount,
+        note: data.note,
+        items: {
+          create: data.items.map((i) => ({
+            productVariantId: i.productVariantId,
+            expectedQty: i.expectedQty,
+            unitCost: i.unitCost,
+            totalCost: i.unitCost * i.expectedQty,
+          })),
+        },
+      },
+    })
+  ]);
+
+  return { success: true };
+}
+
+export async function deleteGoodsReceiving(grId: string) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+  if (user.role === "OWNER") throw new Error("OWNER ไม่สามารถลบข้อมูลได้");
+
+  const gr = await prisma.goodsReceiving.findUnique({ where: { id: grId } });
+  if (!gr) throw new Error("ไม่พบรายการรับสินค้า");
+  if (gr.status !== "PENDING" && gr.status !== "DRAFT") {
+    throw new Error("ลบได้เฉพาะใบรับสินค้าที่ยังไม่ผ่านการตรวจรับเท่านั้น");
+  }
+
+  await prisma.goodsReceivingItem.deleteMany({ where: { receivingId: grId } });
+  await prisma.goodsReceiving.delete({ where: { id: grId } });
+  return { success: true };
+}
+
 export async function completeGoodsReceiving(
   grId: string,
   receivedItems: { itemId: string; receivedQty: number; note?: string }[]

@@ -22,6 +22,7 @@ export async function createOrder(data: {
   addonAmount?: number;
   addonLabel?: string;
   paymentMethod?: string; // "CASH" | "TRANSFER" | "CREDIT"
+  bankAccountId?: string;
   dueDate?: string;       // ISO date for credit
 }) {
   const user = await getSession();
@@ -94,6 +95,7 @@ export async function createOrder(data: {
       addonLabel: data.addonLabel,
       totalAmount,
       paymentMethod: data.paymentMethod || "CASH",
+      bankAccountId: data.bankAccountId || null,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       companyId: data.companyId,
       branchId: data.branchId,
@@ -138,6 +140,7 @@ export async function updateOrder(orderId: string, data: {
   addonAmount?: number;
   addonLabel?: string;
   paymentMethod?: string;
+  bankAccountId?: string;
   dueDate?: string;
 }) {
   const user = await getSession();
@@ -230,6 +233,7 @@ export async function updateOrder(orderId: string, data: {
         addonLabel: data.addonLabel,
         totalAmount,
         paymentMethod: data.paymentMethod || "CASH",
+        bankAccountId: data.bankAccountId || null,
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         note: data.note,
         items: {
@@ -723,6 +727,24 @@ export async function createProduct(data: {
       variants: { create: data.variants },
     },
     include: { variants: true },
+  });
+}
+
+export async function updateProduct(productId: string, data: {
+  name?: string; categoryId?: string | null; description?: string; image?: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+  
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new Error("ไม่พบสินค้า");
+  if (user.role !== "SUPER_ADMIN" && user.companyId !== product.companyId) {
+    throw new Error("ไม่มีสิทธิ์แก้ไขสินค้านี้");
+  }
+
+  return prisma.product.update({
+    where: { id: productId },
+    data,
   });
 }
 

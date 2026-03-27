@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, ClipboardCheck, CheckCircle, Filter, X, Calendar } from "lucide-react";
-import { getGoodsReceivings } from "@/actions/goods-receiving";
+import { Search, Plus, ClipboardCheck, CheckCircle, Filter, X, Calendar, Edit2, Trash2 } from "lucide-react";
+import { getGoodsReceivings, deleteGoodsReceiving } from "@/actions/goods-receiving";
 import { formatCurrency, formatDateShort } from "@/lib/utils";
 import Link from "next/link";
 import Pagination from "@/components/ui/Pagination";
@@ -30,6 +30,7 @@ export default function GoodsReceivingPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -53,6 +54,19 @@ export default function GoodsReceivingPage() {
     setPage(1);
     load(1);
   }, [load]);
+
+  const handleDelete = async (id: string, grNumber: string) => {
+    if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบใบรับสินค้า ${grNumber} ?`)) return;
+    setIsDeleting(id);
+    try {
+      await deleteGoodsReceiving(id);
+      load(page);
+    } catch (err: any) {
+      alert(err.message || "ไม่สามารถลบใบรับสินค้าได้");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
 
   const handleSearch = () => {
     setSearch(searchInput);
@@ -200,11 +214,23 @@ export default function GoodsReceivingPage() {
                   </div>
                   <span className="text-xs text-gray-400">{totalReceived}/{totalItems}</span>
                 </div>
-                {(gr.status === "PENDING" || gr.status === "INSPECTING") && (
-                  <div className="mt-3 flex justify-end">
+                {(gr.status === "PENDING" || gr.status === "INSPECTING" || gr.status === "DRAFT") && (
+                  <div className="mt-3 flex justify-end gap-2">
+                    {gr.status === "PENDING" || gr.status === "DRAFT" ? (
+                      <>
+                        <Link href={`/goods-receiving/${gr.id}/edit`}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors border border-gray-100">
+                          <Edit2 className="w-3 h-3" /> แก้ไข
+                        </Link>
+                        <button onClick={() => handleDelete(gr.id, gr.grNumber)} disabled={isDeleting === gr.id}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors border border-red-100 disabled:opacity-50">
+                          <Trash2 className="w-3 h-3" /> ลบ
+                        </button>
+                      </>
+                    ) : null}
                     <Link href={`/goods-receiving/${gr.id}`}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-medium hover:bg-emerald-100 transition-colors">
-                      <CheckCircle className="w-3 h-3" /> {gr.status === "PENDING" ? "เริ่มตรวจรับ" : "ตรวจรับต่อ"}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-medium hover:bg-emerald-100 transition-colors border border-emerald-100">
+                      <CheckCircle className="w-3 h-3" /> {gr.status === "PENDING" || gr.status === "DRAFT" ? "เริ่มตรวจรับ" : "ตรวจรับต่อ"}
                     </Link>
                   </div>
                 )}

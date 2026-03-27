@@ -7,7 +7,10 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: "ร่าง", color: "bg-gray-100 text-gray-700" },
   PENDING: { label: "รออนุมัติ", color: "bg-amber-100 text-amber-700" },
   APPROVED: { label: "อนุมัติแล้ว", color: "bg-emerald-100 text-emerald-700" },
-  PARTIAL_RECEIVED: { label: "รับบางส่วน", color: "bg-blue-100 text-blue-700" },
+  IN_PRODUCTION: { label: "อยู่ระหว่างการผลิต", color: "bg-blue-100 text-blue-700" },
+  SHIPPED: { label: "ขึ้นตู้", color: "bg-indigo-100 text-indigo-700" },
+  ARRIVED_AT_PORT: { label: "ถึงท่าเรือไทย", color: "bg-cyan-100 text-cyan-700" },
+  PARTIAL_RECEIVED: { label: "รับบางส่วน", color: "bg-orange-100 text-orange-700" },
   COMPLETED: { label: "รับครบแล้ว", color: "bg-purple-100 text-purple-700" },
   CANCELLED: { label: "ยกเลิก", color: "bg-red-100 text-red-700" },
 };

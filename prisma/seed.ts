@@ -268,12 +268,147 @@ async function main() {
 
   console.log("✅ สร้าง Intercompany Transaction 1 รายการ");
 
+  // ============================================================
+  // 11. Suppliers
+  // ============================================================
+  const supp1 = await prisma.supplier.create({
+    data: {
+      code: "SUP-001",
+      name: "บริษัท ไม้ประดับไทย จำกัด",
+      taxId: "0105556001234",
+      address: "100 ถนนบางนา-ตราด กรุงเทพฯ",
+      phone: "02-333-4444",
+      companyId: company1.id,
+    }
+  });
+
+  const supp2 = await prisma.supplier.create({
+    data: {
+      code: "SUP-002",
+      name: "หจก. อุปกรณ์เฟอร์นิเจอร์",
+      taxId: "0105556005678",
+      address: "200 ถนนรามคำแหง กรุงเทพฯ",
+      phone: "02-555-6666",
+      companyId: company1.id,
+    }
+  });
+
+  console.log("✅ สร้างผู้จัดจำหน่าย 2 รายการ");
+
+  // ============================================================
+  // 12. Purchase Orders
+  // ============================================================
+  await prisma.purchaseOrder.create({
+    data: {
+      poNumber: "PO-260320-0001",
+      supplierId: supp1.id,
+      companyId: company1.id,
+      status: "APPROVED",
+      totalAmount: 18000,
+      createdById: companyAdmin1.id,
+      approvedById: companyAdmin1.id,
+      note: "สั่งไม้สำหรับผลิตเฟอร์นิเจอร์",
+      items: {
+        create: [
+          { productVariantId: product1.variants[0].id, quantity: 10, unitPrice: 1500, totalPrice: 15000 },
+          { productVariantId: product1.variants[2].id, quantity: 5, unitPrice: 600, totalPrice: 3000 },
+        ]
+      }
+    }
+  });
+
+  await prisma.purchaseOrder.create({
+    data: {
+      poNumber: "PO-260320-0002",
+      supplierId: supp2.id,
+      companyId: company1.id,
+      status: "DRAFT",
+      totalAmount: 22000,
+      createdById: companyAdmin1.id,
+      note: "สั่งพรมเสริมสต็อก",
+      items: {
+        create: [
+          { productVariantId: product2.variants[0].id, quantity: 10, unitPrice: 2200, totalPrice: 22000 },
+        ]
+      }
+    }
+  });
+
+  console.log("✅ สร้าง Purchase Order 2 รายการ");
+
+  // ============================================================
+  // 13. Expenses
+  // ============================================================
+  const catTransport = await prisma.expenseCategory.upsert({
+    where: { companyId_name: { companyId: company1.id, name: "ค่าเดินทาง" } },
+    update: {},
+    create: { name: "ค่าเดินทาง", companyId: company1.id },
+  });
+
+  const catOffice = await prisma.expenseCategory.upsert({
+    where: { companyId_name: { companyId: company1.id, name: "เครื่องใช้สำนักงาน" } },
+    update: {},
+    create: { name: "เครื่องใช้สำนักงาน", companyId: company1.id },
+  });
+
+  const catUtility = await prisma.expenseCategory.upsert({
+    where: { companyId_name: { companyId: company1.id, name: "สาธารณูปโภค" } },
+    update: {},
+    create: { name: "สาธารณูปโภค", companyId: company1.id },
+  });
+
+  console.log("✅ สร้าง Expense Categories 3 หมวด");
+
+  const expensesToCreate = [
+    {
+      expenseNumber: "EXP-240327-0001",
+      title: "เติมน้ำมันรถขนส่งคันที่ 1",
+      amount: 1200,
+      date: new Date(),
+      categoryId: catTransport.id,
+      paymentMethod: "CASH",
+    },
+    {
+      expenseNumber: "EXP-240327-0002",
+      title: "ค่าไฟสาขากรุงเทพ",
+      amount: 4500,
+      date: new Date(new Date().setHours(new Date().getHours() - 24)),
+      categoryId: catUtility.id,
+      paymentMethod: "TRANSFER",
+      description: "รอบบิล มี.ค. 2026",
+    },
+    {
+      expenseNumber: "EXP-240327-0003",
+      title: "ซื้อกระดาษ A4",
+      amount: 450,
+      date: new Date(new Date().setHours(new Date().getHours() - 48)),
+      categoryId: catOffice.id,
+      paymentMethod: "CASH",
+    }
+  ];
+
+  for (const exp of expensesToCreate) {
+    await prisma.expense.create({
+      data: {
+        ...exp,
+        companyId: company1.id,
+        branchId: branch1.id,
+        createdById: companyAdmin1.id,
+        approvedById: companyAdmin1.id,
+        status: "APPROVED",
+      }
+    });
+  }
+
+  console.log("✅ สร้าง Data Expenses 3 รายการ");
+
   console.log("\n🎉 เพิ่มข้อมูลตัวอย่างเสร็จสิ้น!");
   console.log("📋 สรุป:");
   console.log("   - 2 บริษัท, 5 สาขา, 6 คลังสินค้า");
   console.log("   - 7 ผู้ใช้ (ครบทุก Role)");
   console.log("   - 4 สินค้า + 8 Variants, 11 สต็อก");
   console.log("   - 2 คำสั่งซื้อ, 1 ใบโอนสต็อก, 1 Intercompany");
+  console.log("   - 2 ผู้จัดจำหน่าย, 2 Purchase Orders, 3 รายการค่าใช้จ่าย");
 }
 
 main()

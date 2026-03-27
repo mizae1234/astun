@@ -51,9 +51,9 @@ export default function OrdersPage() {
           <h2 className="text-xl font-bold text-gray-900">คำสั่งซื้อ</h2>
           <p className="text-sm text-gray-500">RECEIVED → PREPARING → READY → OUT_FOR_DELIVERY → DELIVERED</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm">
+        <Link href="/orders/create" className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm">
           <Plus className="w-4 h-4" /> สร้างคำสั่งซื้อ
-        </button>
+        </Link>
       </div>
 
       <div className="relative max-w-md">

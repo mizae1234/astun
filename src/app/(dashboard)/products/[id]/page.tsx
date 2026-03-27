@@ -8,6 +8,8 @@ import {
 import { getProductById, updateVariant, createVariant, createUnitConversion, deleteUnitConversion, getUniqueUnitNames } from "@/actions/product-features";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { updateProduct } from "@/actions/mutations";
+import { getCategories } from "@/actions/data";
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -20,6 +22,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [newUnit, setNewUnit] = useState<any>(null);
   const [newVariant, setNewVariant] = useState<any>(null);
   const [uniqueUnits, setUniqueUnits] = useState<string[]>([]);
+  const [editProductModal, setEditProductModal] = useState(false);
+  const [editProductData, setEditProductData] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+
+  const loadCategories = () => {
+    getCategories().then(setCategories);
+  };
 
   const load = () => {
     getProductById(id).then((p: any) => { 
@@ -28,7 +37,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       if (p?.companyId) getUniqueUnitNames(p.companyId).then(setUniqueUnits);
     });
   };
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); loadCategories(); }, [id]);
+
+  const handleUpdateProduct = async () => {
+    if (!editProductData?.name) return;
+    setSaving(true);
+    await updateProduct(id, {
+      name: editProductData.name,
+      categoryId: editProductData.categoryId || null,
+    });
+    setEditProductModal(false);
+    setSaving(false);
+    load();
+  };
 
   const handleSaveVariant = async () => {
     if (!editVariant) return;
@@ -101,9 +122,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         <button onClick={() => router.push("/products")} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-900">{product.name}</h2>
-          <p className="text-sm text-gray-500">{product.company.name} · {product.category?.name || "ไม่มีหมวดหมู่"}</p>
+        <div className="flex-1 flex items-center gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{product.name}</h2>
+            <p className="text-sm text-gray-500">{product.company.name} · {product.category?.name || "ไม่มีหมวดหมู่"}</p>
+          </div>
+          <button onClick={() => { setEditProductData({ name: product.name, categoryId: product.categoryId || "" }); setEditProductModal(true); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600 transition-colors">
+            <Pencil className="w-4 h-4" />
+          </button>
         </div>
         <button onClick={() => setNewVariant({ name: "", sku: "", price: "", cost: "", size: "", color: "", material: "", barcode: "" })}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
@@ -516,6 +542,42 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               <button onClick={handleCreateVariant} disabled={saving || !newVariant.name || !newVariant.sku}
                 className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
                 <Plus className="w-4 h-4" /> {saving ? "กำลังบันทึก..." : "เพิ่มตัวเลือก"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Base Product Modal */}
+      {editProductModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditProductModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">✏️ แก้ไขข้อมูลสินค้ารวม</h3>
+              <button onClick={() => setEditProductModal(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">ชื่อสินค้า *</label>
+                <input value={editProductData.name} onChange={(e) => setEditProductData({ ...editProductData, name: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">หมวดหมู่</label>
+                <select value={editProductData.categoryId} onChange={(e) => setEditProductData({ ...editProductData, categoryId: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                  <option value="">ไม่มีหมวดหมู่</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setEditProductModal(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">ยกเลิก</button>
+              <button onClick={handleUpdateProduct} disabled={saving || !editProductData.name}
+                className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
+                <Save className="w-4 h-4" /> {saving ? "กำลังบันทึก..." : "บันทึก"}
               </button>
             </div>
           </div>

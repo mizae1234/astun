@@ -24,6 +24,7 @@ import {
   PlusCircle,
   TrendingUp,
   CircleDollarSign,
+  Receipt,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -57,9 +58,10 @@ const menuGroups = [
     ],
   },
   {
-    label: "ตรวจสอบและสั่งซื้อ",
+    label: "การเงิน & จัดซื้อ",
     items: [
       { href: "/purchasing", label: "ใบสั่งซื้อ (PO)", icon: ClipboardCheck },
+      { href: "/expenses", label: "บัญชีรายจ่าย", icon: Receipt },
     ],
   },
   {
@@ -146,9 +148,9 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {menuGroups.map((group) => {
-          const visibleItems = group.items.filter((item) => {
+          const visibleItems = group.items.filter((item: any) => {
             if (!("roles" in item) || !item.roles) return true;
-            return item.roles.includes(user.role);
+            return (item.roles as string[]).includes(user.role);
           });
 
           if (visibleItems.length === 0) return null;

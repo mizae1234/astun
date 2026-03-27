@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, LayoutGrid, List, Package } from "lucide-react";
+import { Search, LayoutGrid, List, Package, Plus } from "lucide-react";
 import { getProductsWithUnits } from "@/actions/product-features";
 import { getCategories } from "@/actions/data";
 import { formatCurrency } from "@/lib/utils";
@@ -52,6 +52,9 @@ export default function ProductsPage() {
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <Link href="/products/create" className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              <Plus className="w-3.5 h-3.5" /> เพิ่มสินค้า
+            </Link>
             <Link href="/products/sets" className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors">
               <Package className="w-3.5 h-3.5" /> เซ็ตสินค้า
             </Link>
