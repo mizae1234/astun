@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, Printer } from "lucide-react";
+import { Search, Plus, Printer, Edit } from "lucide-react";
 import { getOrders } from "@/actions/data";
 import { updateOrderStatus } from "@/actions/mutations";
 import { formatCurrency, formatDateShort } from "@/lib/utils";
@@ -107,6 +107,14 @@ export default function OrdersPage() {
                           className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors">
                           {config.nextLabel}
                         </button>
+                      )}
+                      {order.status === "RECEIVED" && (
+                        <Link href={`/orders/${order.id}/edit`}
+                          className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors group"
+                          title="แก้ไขคำสั่งซื้อ"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Link>
                       )}
                       {order.status !== "DELIVERED" && order.status !== "CANCELLED" && (
                         <button onClick={() => handleStatus(order.id, "CANCELLED")}
