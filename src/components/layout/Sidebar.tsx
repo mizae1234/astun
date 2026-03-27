@@ -58,7 +58,6 @@ const menuGroups = [
     label: "ตรวจสอบและสั่งซื้อ",
     items: [
       { href: "/purchasing", label: "ใบสั่งซื้อ (PO)", icon: ClipboardCheck },
-      { href: "/suppliers", label: "ผู้จำหน่าย", icon: Users },
     ],
   },
   {
@@ -89,6 +88,7 @@ const menuGroups = [
       { href: "/branches", label: "สาขา", icon: GitBranch },
       { href: "/warehouses", label: "คลังสินค้า", icon: Warehouse },
       { href: "/vehicles", label: "รถจัดส่ง", icon: Car },
+      { href: "/suppliers", label: "ผู้จำหน่าย", icon: Users },
       { href: "/users", label: "ผู้ใช้งาน", icon: Users },
     ],
   },
