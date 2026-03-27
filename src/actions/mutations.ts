@@ -47,86 +47,90 @@ export async function createOrder(data: {
   const addonAmount = data.addonAmount || 0;
   const totalAmount = Math.max(0, subtotal - discountValue + addonAmount);
 
-  // Check stock availability first
-  for (const item of data.items) {
-    const whId = item.warehouseId || data.warehouseId;
-    const stock = await prisma.stock.findUnique({
-      where: {
-        productVariantId_warehouseId: {
-          productVariantId: item.productVariantId,
-          warehouseId: whId,
+  // Create order + deduct stock in transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Check stock availability first
+    for (const item of data.items) {
+      const whId = item.warehouseId || data.warehouseId;
+      const stock = await tx.stock.findUnique({
+        where: {
+          productVariantId_warehouseId: {
+            productVariantId: item.productVariantId,
+            warehouseId: whId,
+          },
+        },
+      });
+      if (!stock || stock.quantity < item.quantity) {
+        const variant = await tx.productVariant.findUnique({
+          where: { id: item.productVariantId },
+          include: { product: true },
+        });
+        const itemName = variant ? `${variant.product.name} - ${variant.name}` : item.productVariantId;
+        throw new Error(`สต็อกไม่เพียงพอ: ${itemName} (ต้องการ ${item.quantity}, มี ${stock?.quantity || 0})`);
+      }
+    }
+
+    // Upsert customer if phone is provided
+    let customerId: string | undefined;
+    if (data.customerPhone) {
+      const customer = await tx.customer.upsert({
+        where: { companyId_phone: { companyId: data.companyId, phone: data.customerPhone } },
+        update: { name: data.customerName, address: data.customerAddress },
+        create: { phone: data.customerPhone, name: data.customerName, address: data.customerAddress, companyId: data.companyId },
+      });
+      customerId = customer.id;
+    }
+
+    const order = await tx.order.create({
+      data: {
+        orderNumber: generateOrderNumber(),
+        customerId,
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        customerAddress: data.customerAddress,
+        status: "RECEIVED",
+        subtotal,
+        discount: discountValue,
+        discountType: data.discountType,
+        addonAmount,
+        addonLabel: data.addonLabel,
+        totalAmount,
+        paymentMethod: data.paymentMethod || "CASH",
+        bankAccountId: data.bankAccountId || null,
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        companyId: data.companyId,
+        branchId: data.branchId,
+        warehouseId: data.warehouseId,
+        note: data.note,
+        items: {
+          create: data.items.map((item) => ({
+            productVariantId: item.productVariantId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.unitPrice * item.quantity,
+          })),
         },
       },
     });
-    if (!stock || stock.quantity < item.quantity) {
-      const variant = await prisma.productVariant.findUnique({
-        where: { id: item.productVariantId },
-        include: { product: true },
+
+    // Deduct stock
+    for (const item of data.items) {
+      const whId = item.warehouseId || data.warehouseId;
+      await tx.stock.update({
+        where: {
+          productVariantId_warehouseId: {
+            productVariantId: item.productVariantId,
+            warehouseId: whId,
+          },
+        },
+        data: { quantity: { decrement: item.quantity } },
       });
-      const itemName = variant ? `${variant.product.name} - ${variant.name}` : item.productVariantId;
-      throw new Error(`สต็อกไม่เพียงพอ: ${itemName} (ต้องการ ${item.quantity}, มี ${stock?.quantity || 0})`);
     }
-  }
 
-  // Upsert customer if phone is provided
-  let customerId: string | undefined;
-  if (data.customerPhone) {
-    const customer = await prisma.customer.upsert({
-      where: { companyId_phone: { companyId: data.companyId, phone: data.customerPhone } },
-      update: { name: data.customerName, address: data.customerAddress },
-      create: { phone: data.customerPhone, name: data.customerName, address: data.customerAddress, companyId: data.companyId },
-    });
-    customerId = customer.id;
-  }
-
-  // Create order + deduct stock in sequence
-  const order = await prisma.order.create({
-    data: {
-      orderNumber: generateOrderNumber(),
-      customerId,
-      customerName: data.customerName,
-      customerPhone: data.customerPhone,
-      customerAddress: data.customerAddress,
-      status: "RECEIVED",
-      subtotal,
-      discount: discountValue,
-      discountType: data.discountType,
-      addonAmount,
-      addonLabel: data.addonLabel,
-      totalAmount,
-      paymentMethod: data.paymentMethod || "CASH",
-      bankAccountId: data.bankAccountId || null,
-      dueDate: data.dueDate ? new Date(data.dueDate) : null,
-      companyId: data.companyId,
-      branchId: data.branchId,
-      warehouseId: data.warehouseId,
-      note: data.note,
-      items: {
-        create: data.items.map((item) => ({
-          productVariantId: item.productVariantId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.unitPrice * item.quantity,
-        })),
-      },
-    },
+    return order;
   });
 
-  // Deduct stock
-  for (const item of data.items) {
-    const whId = item.warehouseId || data.warehouseId;
-    await prisma.stock.update({
-      where: {
-        productVariantId_warehouseId: {
-          productVariantId: item.productVariantId,
-          warehouseId: whId,
-        },
-      },
-      data: { quantity: { decrement: item.quantity } },
-    });
-  }
-
-  return { success: true, orderId: order.id, orderNumber: order.orderNumber };
+  return { success: true, orderId: result.id, orderNumber: result.orderNumber };
 }
 
 export async function updateOrder(orderId: string, data: {
@@ -393,70 +397,72 @@ export async function approveStockTransfer(transferId: string) {
     throw new Error("ไม่สามารถอนุมัติใบโอนของบริษัทอื่น");
   }
 
-  // Check stock availability
-  for (const item of transfer.items) {
-    const stock = await prisma.stock.findUnique({
-      where: {
-        productVariantId_warehouseId: {
-          productVariantId: item.productVariantId,
-          warehouseId: transfer.fromWarehouseId,
+  await prisma.$transaction(async (tx) => {
+    // Check stock availability
+    for (const item of transfer.items) {
+      const stock = await tx.stock.findUnique({
+        where: {
+          productVariantId_warehouseId: {
+            productVariantId: item.productVariantId,
+            warehouseId: transfer.fromWarehouseId,
+          },
         },
-      },
-    });
-    if (!stock || stock.quantity < item.quantity) {
-      throw new Error(`สต็อกต้นทางไม่เพียงพอสำหรับ variant ${item.productVariantId}`);
+      });
+      if (!stock || stock.quantity < item.quantity) {
+        throw new Error(`สต็อกต้นทางไม่เพียงพอสำหรับ variant ${item.productVariantId}`);
+      }
     }
-  }
 
-  // Deduct from source, add to destination
-  for (const item of transfer.items) {
-    // Deduct source
-    await prisma.stock.update({
-      where: {
-        productVariantId_warehouseId: {
-          productVariantId: item.productVariantId,
-          warehouseId: transfer.fromWarehouseId,
+    // Deduct from source, add to destination
+    for (const item of transfer.items) {
+      // Deduct source
+      await tx.stock.update({
+        where: {
+          productVariantId_warehouseId: {
+            productVariantId: item.productVariantId,
+            warehouseId: transfer.fromWarehouseId,
+          },
         },
-      },
-      data: { quantity: { decrement: item.quantity } },
-    });
+        data: { quantity: { decrement: item.quantity } },
+      });
 
-    // Add to destination (upsert in case stock record doesn't exist)
-    await prisma.stock.upsert({
-      where: {
-        productVariantId_warehouseId: {
+      // Add to destination (upsert in case stock record doesn't exist)
+      await tx.stock.upsert({
+        where: {
+          productVariantId_warehouseId: {
+            productVariantId: item.productVariantId,
+            warehouseId: transfer.toWarehouseId,
+          },
+        },
+        update: { quantity: { increment: item.quantity } },
+        create: {
           productVariantId: item.productVariantId,
           warehouseId: transfer.toWarehouseId,
+          companyId: transfer.companyId,
+          quantity: item.quantity,
+          minQuantity: 0,
         },
-      },
-      update: { quantity: { increment: item.quantity } },
-      create: {
-        productVariantId: item.productVariantId,
-        warehouseId: transfer.toWarehouseId,
-        companyId: transfer.companyId,
-        quantity: item.quantity,
-        minQuantity: 0,
+      });
+    }
+
+    // Update transfer status
+    await tx.stockTransfer.update({
+      where: { id: transferId },
+      data: {
+        status: "COMPLETED",
+        approvedById: user.id,
       },
     });
-  }
 
-  // Update transfer status
-  await prisma.stockTransfer.update({
-    where: { id: transferId },
-    data: {
-      status: "COMPLETED",
-      approvedById: user.id,
-    },
-  });
-
-  // Log
-  await prisma.stockTransferLog.create({
-    data: {
-      transferId,
-      action: "APPROVED & COMPLETED",
-      performedById: user.id!,
-      note: "อนุมัติและโอนสต็อกเรียบร้อย",
-    },
+    // Log
+    await tx.stockTransferLog.create({
+      data: {
+        transferId,
+        action: "APPROVED & COMPLETED",
+        performedById: user.id!,
+        note: "อนุมัติและโอนสต็อกเรียบร้อย",
+      },
+    });
   });
 
   return { success: true };

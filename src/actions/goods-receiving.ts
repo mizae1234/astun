@@ -145,83 +145,88 @@ export async function completeGoodsReceiving(
     throw new Error("ไม่สามารถตรวจรับสินค้าของบริษัทอื่น");
   }
 
-  // Update each item's received qty
-  let allComplete = true;
-  for (const ri of receivedItems) {
-    const item = gr.items.find((i) => i.id === ri.itemId);
-    if (!item) continue;
+  // Execute atomic update
+  const statusResult = await prisma.$transaction(async (tx) => {
+    // Update each item's received qty
+    let allComplete = true;
+    for (const ri of receivedItems) {
+      const item = gr.items.find((i) => i.id === ri.itemId);
+      if (!item) continue;
 
-    await prisma.goodsReceivingItem.update({
-      where: { id: ri.itemId },
-      data: { receivedQty: ri.receivedQty, note: ri.note },
-    });
+      await tx.goodsReceivingItem.update({
+        where: { id: ri.itemId },
+        data: { receivedQty: ri.receivedQty, note: ri.note },
+      });
 
-    if (ri.receivedQty < item.expectedQty) allComplete = false;
+      if (ri.receivedQty < item.expectedQty) allComplete = false;
 
-    // Add stock to warehouse (only if receivedQty > 0)
-    if (ri.receivedQty > 0) {
-      await prisma.stock.upsert({
-        where: {
-          productVariantId_warehouseId: {
+      // Add stock to warehouse (only if receivedQty > 0)
+      if (ri.receivedQty > 0) {
+        await tx.stock.upsert({
+          where: {
+            productVariantId_warehouseId: {
+              productVariantId: item.productVariantId,
+              warehouseId: gr.warehouseId,
+            },
+          },
+          update: { quantity: { increment: ri.receivedQty } },
+          create: {
             productVariantId: item.productVariantId,
             warehouseId: gr.warehouseId,
+            companyId: gr.companyId,
+            quantity: ri.receivedQty,
+            minQuantity: 0,
           },
-        },
-        update: { quantity: { increment: ri.receivedQty } },
-        create: {
-          productVariantId: item.productVariantId,
-          warehouseId: gr.warehouseId,
-          companyId: gr.companyId,
-          quantity: ri.receivedQty,
-          minQuantity: 0,
-        },
-      });
+        });
+      }
     }
-  }
 
-  // Update GR status
-  await prisma.goodsReceiving.update({
-    where: { id: grId },
-    data: {
-      status: allComplete ? "COMPLETED" : "PARTIAL",
-      completedAt: new Date(),
-    },
-  });
+    // Update GR status
+    await tx.goodsReceiving.update({
+      where: { id: grId },
+      data: {
+        status: allComplete ? "COMPLETED" : "PARTIAL",
+        completedAt: new Date(),
+      },
+    });
 
-  // If this GR is linked to a PO, update the PO
-  if (gr.purchaseOrderId) {
-    const poItems = await prisma.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
-    
-    // Update PO item received quantities
-    for (const ri of receivedItems) {
-      if (ri.receivedQty > 0) {
-        const item = gr.items.find(i => i.id === ri.itemId);
-        if (item) {
-          const poItem = poItems.find(pi => pi.productVariantId === item.productVariantId);
-          if (poItem) {
-            await prisma.purchaseOrderItem.update({
-              where: { id: poItem.id },
-              data: { receivedQty: { increment: ri.receivedQty } }
-            });
+    // If this GR is linked to a PO, update the PO
+    if (gr.purchaseOrderId) {
+      const poItems = await tx.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
+      
+      // Update PO item received quantities
+      for (const ri of receivedItems) {
+        if (ri.receivedQty > 0) {
+          const item = gr.items.find(i => i.id === ri.itemId);
+          if (item) {
+            const poItem = poItems.find(pi => pi.productVariantId === item.productVariantId);
+            if (poItem) {
+              await tx.purchaseOrderItem.update({
+                where: { id: poItem.id },
+                data: { receivedQty: { increment: ri.receivedQty } }
+              });
+            }
           }
         }
       }
+
+      // Check if PO is completely received
+      const updatedPoItems = await tx.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
+      const isPoComplete = updatedPoItems.every(pi => pi.receivedQty >= pi.quantity);
+      
+      await tx.purchaseOrder.update({
+        where: { id: gr.purchaseOrderId },
+        data: {
+          status: isPoComplete ? "COMPLETED" : "PARTIAL_RECEIVED",
+          receivedDate: isPoComplete ? new Date() : null
+        }
+      });
     }
 
-    // Check if PO is completely received
-    const updatedPoItems = await prisma.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
-    const isPoComplete = updatedPoItems.every(pi => pi.receivedQty >= pi.quantity);
-    
-    await prisma.purchaseOrder.update({
-      where: { id: gr.purchaseOrderId },
-      data: {
-        status: isPoComplete ? "COMPLETED" : "PARTIAL_RECEIVED",
-        receivedDate: isPoComplete ? new Date() : null
-      }
-    });
-  }
+    return allComplete ? "COMPLETED" : "PARTIAL";
+  });
 
-  return { success: true, status: allComplete ? "COMPLETED" : "PARTIAL" };
+  return { success: true, status: statusResult };
 }
 
 export async function getGoodsReceivingById(grId: string) {

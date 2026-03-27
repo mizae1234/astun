@@ -1,6 +1,7 @@
 "use server";
 
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/access-control";
 
 export async function getDashboardStats() {
@@ -18,7 +19,7 @@ export async function getDashboardStats() {
     pendingOrders,
     confirmedOrders,
     totalProducts,
-    lowStockCount,
+    lowStockCountRaw,
     pendingTransfers,
     recentOrders,
     lowStockItems,
@@ -32,10 +33,12 @@ export async function getDashboardStats() {
       },
     }),
     prisma.product.count({ where: companyFilter }),
-    // Count low stock manually (can't reference column in where easily)
-    prisma.stock.findMany({ where: companyFilter, select: { quantity: true, minQuantity: true } })
-      .then(stocks => stocks.filter(s => s.quantity <= s.minQuantity).length)
-      .catch(() => 0),
+    // Count low stock natively inside the database using a raw query to avoid RAM spikes
+    prisma.$queryRaw<{count: number}[]>(
+      user.role === "SUPER_ADMIN" || user.role === "OWNER"
+        ? Prisma.sql`SELECT CAST(COUNT(*) as INTEGER) as count FROM "Stock" WHERE "quantity" <= "minQuantity"`
+        : Prisma.sql`SELECT CAST(COUNT(*) as INTEGER) as count FROM "Stock" WHERE "quantity" <= "minQuantity" AND "companyId" = ${user.companyId}`
+    ),
     prisma.stockTransfer.count({
       where: { status: "PENDING" },
     }),
@@ -71,6 +74,7 @@ export async function getDashboardStats() {
   });
 
   const totalRevenue = revenueResult._sum.totalAmount || 0;
+  const lowStockCount = Array.isArray(lowStockCountRaw) ? Number(lowStockCountRaw[0]?.count || 0) : 0;
 
   return {
     stats: {
