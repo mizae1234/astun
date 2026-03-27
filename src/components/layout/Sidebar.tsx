@@ -22,6 +22,8 @@ import {
   PackageSearch,
   LayoutList,
   PlusCircle,
+  TrendingUp,
+  CircleDollarSign,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -74,6 +76,14 @@ const menuGroups = [
         icon: ArrowLeftRight,
         roles: ["SUPER_ADMIN", "COMPANY_ADMIN"],
       },
+    ],
+  },
+  {
+    label: "รายงาน",
+    items: [
+      { href: "/reports/sales", label: "รายงานยอดขาย", icon: TrendingUp },
+      { href: "/reports/inventory", label: "สินค้าคงคลัง", icon: Package },
+      { href: "/reports/finance", label: "การเงิน", icon: CircleDollarSign },
     ],
   },
   {
