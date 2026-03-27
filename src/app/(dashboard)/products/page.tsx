@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Search, LayoutGrid, List, Package } from "lucide-react";
 import { getProductsWithUnits } from "@/actions/product-features";
+import { getCategories } from "@/actions/data";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import Pagination from "@/components/ui/Pagination";
@@ -15,24 +16,35 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const [searchTimeout, setSearchTimeout] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categoryId, setCategoryId] = useState("");
 
-  const load = useCallback((p: number, s: string) => {
-    getProductsWithUnits(p, 20, s).then((res: any) => {
+  const load = useCallback((p: number, s: string, cId: string) => {
+    getProductsWithUnits(p, 20, s, cId).then((res: any) => {
       setProducts(res.data || []);
       setTotalPages(res.totalPages || 0);
       setTotal(res.total || 0);
     });
   }, []);
 
-  useEffect(() => { load(1, ""); }, [load]);
+  useEffect(() => {
+    load(1, "", "");
+    getCategories().then(setCategories);
+  }, [load]);
 
   const handleSearch = (val: string) => {
     setSearch(val);
     if (searchTimeout) clearTimeout(searchTimeout);
-    setSearchTimeout(setTimeout(() => { setPage(1); load(1, val); }, 400));
+    setSearchTimeout(setTimeout(() => { setPage(1); load(1, val, categoryId); }, 400));
   };
 
-  const handlePage = (p: number) => { setPage(p); load(p, search); };
+  const handleCategoryChange = (val: string) => {
+    setCategoryId(val);
+    setPage(1);
+    load(1, search, val);
+  };
+
+  const handlePage = (p: number) => { setPage(p); load(p, search, categoryId); };
 
   return (
     <div className="space-y-6">
@@ -46,6 +58,11 @@ export default function ProductsPage() {
             <span className="text-xs text-gray-400">{total} สินค้า</span>
           </div>
           <div className="flex items-center gap-3">
+            <select value={categoryId} onChange={(e) => handleCategoryChange(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="">ทุกหมวดหมู่</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input type="text" placeholder="ค้นหาสินค้า / SKU / barcode" value={search} onChange={(e) => handleSearch(e.target.value)}

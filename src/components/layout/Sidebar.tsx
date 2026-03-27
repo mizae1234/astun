@@ -55,6 +55,13 @@ const menuGroups = [
     ],
   },
   {
+    label: "ตรวจสอบและสั่งซื้อ",
+    items: [
+      { href: "/purchasing", label: "ใบสั่งซื้อ (PO)", icon: ClipboardCheck },
+      { href: "/suppliers", label: "ผู้จำหน่าย", icon: Users },
+    ],
+  },
+  {
     label: "สินค้า & สต็อก",
     items: [
       { href: "/products", label: "สินค้า", icon: Package },

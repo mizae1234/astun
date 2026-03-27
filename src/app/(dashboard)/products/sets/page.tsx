@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, Package, Save, ArrowLeft } from "lucide-react";
 import { getProductSets, createProductSet, deleteProductSet } from "@/actions/product-features";
-import { getProducts, getCompanies } from "@/actions/data";
+import { getProducts, getCompanies, getCategories } from "@/actions/data";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -18,13 +18,21 @@ export default function ProductSetsPage() {
   const [items, setItems] = useState<{ productVariantId: string; variantName: string; quantity: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categoryId, setCategoryId] = useState("");
 
-  const load = () => {
-    getProductSets().then((s: any) => setSets(s));
+  const load = (cId: string = "") => {
+    getProductSets(cId).then((s: any) => setSets(s));
     getCompanies().then((c: any) => setCompanies(c));
     getProducts().then((p: any) => setProducts(p));
+    getCategories().then((c: any) => setCategories(c));
   };
   useEffect(() => { load(); }, []);
+
+  const handleCategoryChange = (val: string) => {
+    setCategoryId(val);
+    load(val);
+  };
 
   const addItem = (variantId: string, variantName: string) => {
     if (items.find((i) => i.productVariantId === variantId)) return;

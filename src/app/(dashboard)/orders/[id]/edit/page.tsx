@@ -6,12 +6,13 @@ import {
   Pause, Play, X, Tag, DollarSign, FileText, Warehouse,
   CreditCard, Banknote, Clock, CheckCircle, UserCheck
 } from "lucide-react";
-import { createOrder } from "@/actions/mutations";
+import { updateOrder } from "@/actions/mutations";
 import { getPOSProducts, getCompanyWarehouses } from "@/actions/goods-receiving";
-import { getCompanies } from "@/actions/data";
+import { getCompanies, getOrderById } from "@/actions/data";
 import { searchCustomersByPhone } from "@/actions/customer";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { use } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
 type UnitOption = { id: string; unitName: string; qtyPerUnit: number; pricePerUnit: number };
@@ -36,7 +37,8 @@ type ParkedBill = {
 const STORAGE_KEY = "astun_pos_state";
 const PARKED_KEY = "astun_pos_parked";
 
-export default function POSPage() {
+export default function EditOrderPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const [companies, setCompanies] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -51,6 +53,7 @@ export default function POSPage() {
   const [parkedBills, setParkedBills] = useState<ParkedBill[]>([]);
   const [showParked, setShowParked] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [orderLoaded, setOrderLoaded] = useState(false);
 
   // Confirmation modal state
   const [showConfirm, setShowConfirm] = useState(false);
@@ -72,36 +75,28 @@ export default function POSPage() {
 
   // Load state
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PARKED_KEY);
-      if (saved) setParkedBills(JSON.parse(saved));
-      const state = localStorage.getItem(STORAGE_KEY);
-      if (state) {
-        const s = JSON.parse(state);
-        // Migrate old cart items that lack units/warehouseId
-        const migratedCart = (s.cart || []).map((c: any) => ({
-          ...c,
-          units: c.units || [{ id: "piece", unitName: "ชิ้น", qtyPerUnit: 1, pricePerUnit: c.price }],
-          selectedUnitId: c.selectedUnitId || "piece",
-          warehouseId: c.warehouseId || s.warehouseId || "",
-          warehouseName: c.warehouseName || "",
-        }));
-        setCart(migratedCart);
-        if (s.companyId) setSelectedCompany(s.companyId);
-        if (s.warehouseId) setSelectedWarehouse(s.warehouseId);
+    getOrderById(id).then((order: any) => {
+      if (!order || order.status !== "RECEIVED") {
+        router.push("/orders");
+        return;
       }
-    } catch { /* ignore */ }
-    setInitialized(true);
-  }, []);
-
-  // Auto-save cart
-  const saveState = useCallback(() => {
-    if (!initialized) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      cart, companyId: selectedCompany, warehouseId: selectedWarehouse,
-    }));
-  }, [cart, selectedCompany, selectedWarehouse, initialized]);
-  useEffect(() => { saveState(); }, [saveState]);
+      setSelectedCompany(order.companyId);
+      setSelectedWarehouse(order.warehouseId);
+      setCustomerName(order.customerName);
+      setCustomerPhone(order.customerPhone || "");
+      setCustomerAddress(order.customerAddress || "");
+      setNote(order.note || "");
+      setDiscount(order.discount);
+      setDiscountType(order.discountType as any || "fixed");
+      setAddonAmount(order.addonAmount);
+      setAddonLabel(order.addonLabel || "");
+      setPaymentMethod(order.paymentMethod as any || "CASH");
+      if (order.dueDate) setDueDate(new Date(order.dueDate).toISOString().split('T')[0]);
+      
+      // We will load cart after products are loaded
+      setOrderLoaded(true);
+    });
+  }, [id, router]);
 
   useEffect(() => { getCompanies().then((c: any) => setCompanies(c)); }, []);
 
@@ -113,9 +108,49 @@ export default function POSPage() {
 
   useEffect(() => {
     if (selectedCompany && selectedWarehouse) {
-      getPOSProducts(selectedCompany, selectedWarehouse).then((p) => setProducts(p as POSProduct[]));
+      getPOSProducts(selectedCompany, selectedWarehouse).then((p) => {
+        setProducts(p as POSProduct[]);
+        
+        // Build cart from order items once products are loaded
+        if (orderLoaded && cart.length === 0 && !initialized) {
+          getOrderById(id).then((order: any) => {
+            if (!order) return;
+            const initialCart: CartItem[] = order.items.map((item: any) => {
+              const product = p.find((prod: POSProduct) => prod.variantId === item.productVariantId);
+              const units = product ? product.units : [{ id: "piece", unitName: "ชิ้น", qtyPerUnit: 1, pricePerUnit: item.unitPrice }];
+              
+              // Find the unit that matches the stored unit price (approximation, since we didn't save selectedUnitId in DB)
+              let matchedUnitId = "piece";
+              for (const u of units) {
+                if (Math.abs(u.pricePerUnit * u.qtyPerUnit - item.unitPrice) < 0.1) {
+                  matchedUnitId = u.id;
+                  break;
+                }
+              }
+
+              return {
+                variantId: item.productVariantId,
+                variantName: item.productVariant.name,
+                productName: item.productVariant.product?.name || "สินค้า",
+                sku: item.productVariant.sku,
+                price: item.unitPrice,
+                // If it's a converted unit, the DB 'quantity' is total base pieces.
+                // We show UI quantity = total / qtyPerUnit
+                quantity: item.quantity / (units.find((u: any) => u.id === matchedUnitId)?.qtyPerUnit || 1),
+                available: (product?.available || 0) + item.quantity, // restore their own stock allowance
+                warehouseId: order.warehouseId,
+                warehouseName: getWarehouseName(order.warehouseId),
+                selectedUnitId: matchedUnitId,
+                units,
+              };
+            });
+            setCart(initialCart);
+            setInitialized(true);
+          });
+        }
+      });
     }
-  }, [selectedCompany, selectedWarehouse]);
+  }, [selectedCompany, selectedWarehouse, orderLoaded, id, initialized]);
 
   // Extract unique categories
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
@@ -200,35 +235,8 @@ export default function POSPage() {
   const discountValue = discountType === "percent" ? subtotal * (discount / 100) : discount;
   const total = Math.max(0, subtotal - discountValue + addonAmount);
 
-  // Park bill
-  const parkBill = () => {
-    if (cart.length === 0) return;
-    const bill: ParkedBill = { id: Date.now().toString(), label: `บิล ${parkedBills.length + 1}`, cart, companyId: selectedCompany, warehouseId: selectedWarehouse, createdAt: new Date().toISOString() };
-    const updated = [...parkedBills, bill];
-    setParkedBills(updated);
-    localStorage.setItem(PARKED_KEY, JSON.stringify(updated));
-    clearCart();
-  };
-
-  const restoreBill = (bill: ParkedBill) => {
-    setCart(bill.cart);
-    if (bill.companyId) setSelectedCompany(bill.companyId);
-    if (bill.warehouseId) setSelectedWarehouse(bill.warehouseId);
-    const updated = parkedBills.filter((b) => b.id !== bill.id);
-    setParkedBills(updated);
-    localStorage.setItem(PARKED_KEY, JSON.stringify(updated));
-    setShowParked(false);
-  };
-
-  const deleteParked = (id: string) => {
-    const updated = parkedBills.filter((b) => b.id !== id);
-    setParkedBills(updated);
-    localStorage.setItem(PARKED_KEY, JSON.stringify(updated));
-  };
-
   const clearCart = () => {
     setCart([]);
-    localStorage.removeItem(STORAGE_KEY);
   };
 
   const openConfirmModal = () => {
@@ -279,10 +287,9 @@ export default function POSPage() {
 
     setLoading(true); setError("");
     try {
-      await createOrder({
+      await updateOrder(id, {
         customerName, customerPhone: customerPhone || undefined,
         customerAddress: customerAddress || undefined,
-        companyId: selectedCompany, branchId: wh.branchId, warehouseId: selectedWarehouse,
         items: cart.map((c) => ({
           productVariantId: c.variantId,
           quantity: c.quantity * getEffectiveQtyPerUnit(c),
@@ -327,31 +334,9 @@ export default function POSPage() {
               options={warehouses.map((w: any) => ({ value: w.id, label: w.name, sub: w.branch.name }))}
             />
             <div className="ml-auto flex gap-2">
-              {parkedBills.length > 0 && (
-                <button onClick={() => setShowParked(!showParked)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-600 rounded-xl text-sm font-medium hover:bg-amber-100 transition-colors relative">
-                  <Play className="w-4 h-4" /> พักบิล
-                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-500 text-white rounded-full text-[10px] flex items-center justify-center font-bold">{parkedBills.length}</span>
-                </button>
-              )}
             </div>
           </div>
 
-          {showParked && parkedBills.length > 0 && (
-            <div className="mb-4 bg-amber-50 rounded-xl border border-amber-200 p-3 space-y-2">
-              <p className="text-xs font-bold text-amber-700">📋 บิลที่พัก ({parkedBills.length})</p>
-              {parkedBills.map((bill) => (
-                <div key={bill.id} className="flex items-center gap-3 bg-white rounded-lg p-2.5 border border-amber-100">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{bill.label}</p>
-                    <p className="text-xs text-gray-400">{bill.cart.length} รายการ · {formatCurrency(bill.cart.reduce((s, c) => s + c.price * c.quantity, 0))}</p>
-                  </div>
-                  <button onClick={() => restoreBill(bill)} className="px-2.5 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-200">เรียกคืน</button>
-                  <button onClick={() => deleteParked(bill.id)} className="p-1 text-gray-300 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
-                </div>
-              ))}
-            </div>
-          )}
 
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -420,9 +405,6 @@ export default function POSPage() {
             <div className="flex gap-1">
               {cart.length > 0 && (
                 <>
-                  <button onClick={parkBill} className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg text-xs font-medium hover:bg-amber-100" title="พักบิล">
-                    <Pause className="w-3 h-3" /> พัก
-                  </button>
                   <button onClick={clearCart} className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-500 rounded-lg text-xs font-medium hover:bg-red-100" title="ล้าง">
                     <Trash2 className="w-3 h-3" /> ล้าง
                   </button>
@@ -498,7 +480,7 @@ export default function POSPage() {
             </div>
             <button onClick={openConfirmModal} disabled={cart.length === 0}
               className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm">
-              ดำเนินการสั่งซื้อ
+              บันทึกการแก้ไข
             </button>
           </div>
         </div>
@@ -663,7 +645,7 @@ export default function POSPage() {
               </button>
               <button onClick={handleSubmit} disabled={loading}
                 className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:bg-gray-300 transition-colors shadow-sm flex items-center justify-center gap-2">
-                {loading ? "กำลังสร้าง..." : <><CheckCircle className="w-4 h-4" /> ยืนยันคำสั่งซื้อ ({formatCurrency(total)})</>}
+                {loading ? "กำลังบันทึก..." : <><CheckCircle className="w-4 h-4" /> ยืนยันการแก้ไข ({formatCurrency(total)})</>}
               </button>
             </div>
           </div>

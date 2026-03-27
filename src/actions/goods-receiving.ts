@@ -9,6 +9,8 @@ import { getSession } from "@/lib/access-control";
 
 export async function createGoodsReceiving(data: {
   supplierName: string;
+  supplierId?: string;
+  purchaseOrderId?: string;
   supplierContact?: string;
   invoiceNumber?: string;
   warehouseId: string;
@@ -30,6 +32,8 @@ export async function createGoodsReceiving(data: {
     data: {
       grNumber,
       supplierName: data.supplierName,
+      supplierId: data.supplierId,
+      purchaseOrderId: data.purchaseOrderId,
       supplierContact: data.supplierContact,
       invoiceNumber: data.invoiceNumber,
       warehouseId: data.warehouseId,
@@ -117,10 +121,80 @@ export async function completeGoodsReceiving(
     },
   });
 
+  // If this GR is linked to a PO, update the PO
+  if (gr.purchaseOrderId) {
+    const poItems = await prisma.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
+    
+    // Update PO item received quantities
+    for (const ri of receivedItems) {
+      if (ri.receivedQty > 0) {
+        const item = gr.items.find(i => i.id === ri.itemId);
+        if (item) {
+          const poItem = poItems.find(pi => pi.productVariantId === item.productVariantId);
+          if (poItem) {
+            await prisma.purchaseOrderItem.update({
+              where: { id: poItem.id },
+              data: { receivedQty: { increment: ri.receivedQty } }
+            });
+          }
+        }
+      }
+    }
+
+    // Check if PO is completely received
+    const updatedPoItems = await prisma.purchaseOrderItem.findMany({ where: { poId: gr.purchaseOrderId } });
+    const isPoComplete = updatedPoItems.every(pi => pi.receivedQty >= pi.quantity);
+    
+    await prisma.purchaseOrder.update({
+      where: { id: gr.purchaseOrderId },
+      data: {
+        status: isPoComplete ? "COMPLETED" : "PARTIAL_RECEIVED",
+        receivedDate: isPoComplete ? new Date() : null
+      }
+    });
+  }
+
   return { success: true, status: allComplete ? "COMPLETED" : "PARTIAL" };
 }
 
-export async function getGoodsReceivings(page = 1, pageSize = 20) {
+export async function getGoodsReceivingById(grId: string) {
+  const user = await getSession();
+  if (!user) return null;
+
+  const gr = await prisma.goodsReceiving.findUnique({
+    where: { id: grId },
+    include: {
+      warehouse: { select: { name: true } },
+      company: { select: { name: true } },
+      receivedBy: { select: { name: true } },
+      purchaseOrder: { select: { poNumber: true } },
+      supplier: { select: { name: true, code: true } },
+      items: {
+        include: {
+          productVariant: {
+            select: { name: true, sku: true, product: { select: { name: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  if (!gr) return null;
+  if (user.role !== "SUPER_ADMIN" && user.role !== "OWNER" && user.companyId !== gr.companyId) {
+    return null;
+  }
+
+  return gr;
+}
+
+export async function getGoodsReceivings(
+  page = 1,
+  pageSize = 20,
+  search = "",
+  status = "",
+  dateFrom = "",
+  dateTo = ""
+) {
   const user = await getSession();
   if (!user) return { data: [], total: 0, totalPages: 0, page: 1 };
 
@@ -129,13 +203,39 @@ export async function getGoodsReceivings(page = 1, pageSize = 20) {
       ? {}
       : { companyId: user.companyId! };
 
+  const where: any = { ...companyFilter };
+
+  if (search) {
+    where.OR = [
+      { grNumber: { contains: search, mode: "insensitive" } },
+      { supplierName: { contains: search, mode: "insensitive" } },
+      { invoiceNumber: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  if (status) {
+    where.status = status;
+  }
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
   const [data, total] = await Promise.all([
     prisma.goodsReceiving.findMany({
-      where: companyFilter,
+      where,
       include: {
         warehouse: { select: { name: true } },
         company: { select: { name: true } },
         receivedBy: { select: { name: true } },
+        purchaseOrder: { select: { poNumber: true } },
+        supplier: { select: { name: true } },
         items: {
           include: { productVariant: { select: { name: true, sku: true } } },
         },
@@ -144,7 +244,7 @@ export async function getGoodsReceivings(page = 1, pageSize = 20) {
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.goodsReceiving.count({ where: companyFilter }),
+    prisma.goodsReceiving.count({ where }),
   ]);
 
   return { data, total, totalPages: Math.ceil(total / pageSize), page };
@@ -154,7 +254,7 @@ export async function getGoodsReceivings(page = 1, pageSize = 20) {
 // QUEUE QUERIES
 // ============================================================
 
-export async function getWarehouseQueue() {
+export async function getWarehouseQueue(categoryId?: string) {
   const user = await getSession();
   if (!user) return { received: [], preparing: [], ready: [] };
 
@@ -163,9 +263,20 @@ export async function getWarehouseQueue() {
       ? {}
       : { companyId: user.companyId! };
 
+  const baseWhere: any = { ...companyFilter };
+  if (categoryId) {
+    baseWhere.items = {
+      some: {
+        productVariant: {
+          product: { categoryId }
+        }
+      }
+    };
+  }
+
   const [received, preparing, ready] = await Promise.all([
     prisma.order.findMany({
-      where: { ...companyFilter, status: "RECEIVED" },
+      where: { ...baseWhere, status: "RECEIVED" },
       include: {
         company: { select: { name: true } },
         branch: { select: { name: true } },
@@ -175,7 +286,7 @@ export async function getWarehouseQueue() {
       orderBy: { createdAt: "asc" },
     }),
     prisma.order.findMany({
-      where: { ...companyFilter, status: "PREPARING" },
+      where: { ...baseWhere, status: "PREPARING" },
       include: {
         company: { select: { name: true } },
         branch: { select: { name: true } },
@@ -185,7 +296,7 @@ export async function getWarehouseQueue() {
       orderBy: { createdAt: "asc" },
     }),
     prisma.order.findMany({
-      where: { ...companyFilter, status: "READY" },
+      where: { ...baseWhere, status: "READY" },
       include: {
         company: { select: { name: true } },
         branch: { select: { name: true } },

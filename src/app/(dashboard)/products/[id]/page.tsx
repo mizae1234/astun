@@ -5,7 +5,7 @@ import {
   ArrowLeft, Package, Tag, Barcode, DollarSign, Layers, Warehouse,
   History, Plus, X, Save, Pencil, TrendingUp, TrendingDown
 } from "lucide-react";
-import { getProductById, updateVariant, createUnitConversion, deleteUnitConversion } from "@/actions/product-features";
+import { getProductById, updateVariant, createVariant, createUnitConversion, deleteUnitConversion, getUniqueUnitNames } from "@/actions/product-features";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 
@@ -18,9 +18,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [editVariant, setEditVariant] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [newUnit, setNewUnit] = useState<any>(null);
+  const [newVariant, setNewVariant] = useState<any>(null);
+  const [uniqueUnits, setUniqueUnits] = useState<string[]>([]);
 
   const load = () => {
-    getProductById(id).then((p) => { setProduct(p); setLoading(false); });
+    getProductById(id).then((p: any) => { 
+      setProduct(p); 
+      setLoading(false);
+      if (p?.companyId) getUniqueUnitNames(p.companyId).then(setUniqueUnits);
+    });
   };
   useEffect(() => { load(); }, [id]);
 
@@ -35,6 +41,24 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       cost: parseFloat(editVariant.cost),
     });
     setEditVariant(null);
+    setSaving(false);
+    load();
+  };
+
+  const handleCreateVariant = async () => {
+    if (!newVariant?.name || !newVariant?.sku) return;
+    setSaving(true);
+    await createVariant(id, {
+      name: newVariant.name,
+      sku: newVariant.sku,
+      price: parseFloat(newVariant.price || "0"),
+      cost: parseFloat(newVariant.cost || "0"),
+      size: newVariant.size || undefined,
+      color: newVariant.color || undefined,
+      material: newVariant.material || undefined,
+      barcode: newVariant.barcode || undefined,
+    });
+    setNewVariant(null);
     setSaving(false);
     load();
   };
@@ -81,6 +105,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           <h2 className="text-xl font-bold text-gray-900">{product.name}</h2>
           <p className="text-sm text-gray-500">{product.company.name} · {product.category?.name || "ไม่มีหมวดหมู่"}</p>
         </div>
+        <button onClick={() => setNewVariant({ name: "", sku: "", price: "", cost: "", size: "", color: "", material: "", barcode: "" })}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
+          <Plus className="w-4 h-4" /> เพิ่มตัวเลือก
+        </button>
       </div>
 
       {/* Tabs */}
@@ -200,7 +228,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                     <p className="text-xs font-bold text-blue-700">เพิ่มหน่วยขายใหม่</p>
                     <div className="grid grid-cols-4 gap-2">
                       <input value={newUnit.unitName} onChange={(e) => setNewUnit({ ...newUnit, unitName: e.target.value })}
+                        list="unit-suggestions"
                         placeholder="ชื่อหน่วย (เช่น โหล)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                      <datalist id="unit-suggestions">
+                        {uniqueUnits.map((u, i) => <option key={i} value={u} />)}
+                      </datalist>
                       <input value={newUnit.qtyPerUnit} onChange={(e) => setNewUnit({ ...newUnit, qtyPerUnit: e.target.value })}
                         placeholder="จำนวน/หน่วย" type="number" className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
                       <input value={newUnit.pricePerUnit} onChange={(e) => setNewUnit({ ...newUnit, pricePerUnit: e.target.value })}
@@ -381,12 +413,109 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ขนาด</label>
+                  <input value={editVariant.size || ""} onChange={(e) => setEditVariant({ ...editVariant, size: e.target.value })}
+                    placeholder="เช่น 120x60"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">สี</label>
+                  <input value={editVariant.color || ""} onChange={(e) => setEditVariant({ ...editVariant, color: e.target.value })}
+                    placeholder="เช่น ธรรมชาติ, วอลนัท"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">วัสดุ</label>
+                  <input value={editVariant.material || ""} onChange={(e) => setEditVariant({ ...editVariant, material: e.target.value })}
+                    placeholder="เช่น MDF, ไม้จริง"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
             </div>
             <div className="p-5 border-t border-gray-100 flex gap-3">
               <button onClick={() => setEditVariant(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">ยกเลิก</button>
               <button onClick={handleSaveVariant} disabled={saving}
                 className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
                 <Save className="w-4 h-4" /> {saving ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Variant Modal */}
+      {newVariant && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setNewVariant(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">➕ เพิ่มตัวเลือกใหม่</h3>
+              <button onClick={() => setNewVariant(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ชื่อตัวเลือก *</label>
+                  <input value={newVariant.name} onChange={(e) => setNewVariant({ ...newVariant, name: e.target.value })}
+                    placeholder="เช่น 120x60cm - สีดำ"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">SKU *</label>
+                  <input value={newVariant.sku} onChange={(e) => setNewVariant({ ...newVariant, sku: e.target.value })}
+                    placeholder="เช่น BRM-DK-003"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ราคาขาย (บาท)</label>
+                  <input value={newVariant.price} onChange={(e) => setNewVariant({ ...newVariant, price: e.target.value })}
+                    type="number" step="0.01" placeholder="0.00"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ต้นทุน (บาท)</label>
+                  <input value={newVariant.cost} onChange={(e) => setNewVariant({ ...newVariant, cost: e.target.value })}
+                    type="number" step="0.01" placeholder="0.00"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ขนาด</label>
+                  <input value={newVariant.size} onChange={(e) => setNewVariant({ ...newVariant, size: e.target.value })}
+                    placeholder="เช่น 120x60"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">สี</label>
+                  <input value={newVariant.color} onChange={(e) => setNewVariant({ ...newVariant, color: e.target.value })}
+                    placeholder="เช่น ดำ, ขาว, วอลนัท"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">วัสดุ</label>
+                  <input value={newVariant.material} onChange={(e) => setNewVariant({ ...newVariant, material: e.target.value })}
+                    placeholder="เช่น MDF, ไม้จริง"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Barcode</label>
+                <input value={newVariant.barcode} onChange={(e) => setNewVariant({ ...newVariant, barcode: e.target.value })}
+                  placeholder="EAN-13 / UPC (ถ้ามี)"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setNewVariant(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">ยกเลิก</button>
+              <button onClick={handleCreateVariant} disabled={saving || !newVariant.name || !newVariant.sku}
+                className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
+                <Plus className="w-4 h-4" /> {saving ? "กำลังบันทึก..." : "เพิ่มตัวเลือก"}
               </button>
             </div>
           </div>

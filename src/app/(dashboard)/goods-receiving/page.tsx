@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, ClipboardCheck, CheckCircle } from "lucide-react";
+import { Search, Plus, ClipboardCheck, CheckCircle, Filter, X, Calendar } from "lucide-react";
 import { getGoodsReceivings } from "@/actions/goods-receiving";
 import { formatCurrency, formatDateShort } from "@/lib/utils";
 import Link from "next/link";
@@ -16,19 +16,57 @@ const statusConfig: Record<string, { label: string; color: string; icon: string 
   REJECTED: { label: "ปฏิเสธ", color: "bg-red-100 text-red-700", icon: "❌" },
 };
 
+const statusOptions = [
+  { value: "", label: "ทุกสถานะ" },
+  { value: "PENDING", label: "⏳ รอตรวจรับ" },
+  { value: "INSPECTING", label: "🔍 กำลังตรวจ" },
+  { value: "COMPLETED", label: "✅ ตรวจรับครบ" },
+  { value: "PARTIAL", label: "⚠️ รับบางส่วน" },
+  { value: "REJECTED", label: "❌ ปฏิเสธ" },
+];
+
 export default function GoodsReceivingPage() {
   const [receivings, setReceivings] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  const load = useCallback((p: number) => {
-    getGoodsReceivings(p, 20).then((res: any) => {
-      setReceivings(res.data || []);
-      setTotalPages(res.totalPages || 0);
-    });
-  }, []);
+  // Filters
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [searchInput, setSearchInput] = useState("");
 
-  useEffect(() => { load(1); }, [load]);
+  const load = useCallback(
+    (p: number) => {
+      getGoodsReceivings(p, 20, search, status, dateFrom, dateTo).then((res: any) => {
+        setReceivings(res.data || []);
+        setTotalPages(res.totalPages || 0);
+        setTotal(res.total || 0);
+      });
+    },
+    [search, status, dateFrom, dateTo]
+  );
+
+  useEffect(() => {
+    setPage(1);
+    load(1);
+  }, [load]);
+
+  const handleSearch = () => {
+    setSearch(searchInput);
+  };
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setSearch("");
+    setStatus("");
+    setDateFrom("");
+    setDateTo("");
+  };
+
+  const hasFilters = search || status || dateFrom || dateTo;
 
   return (
     <div className="space-y-6">
@@ -41,6 +79,79 @@ export default function GoodsReceivingPage() {
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm">
           <Plus className="w-4 h-4" /> สร้างใบรับสินค้า
         </Link>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="ค้นหา GR, Supplier, Invoice..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors"
+          >
+            ค้นหา
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none bg-white"
+            >
+              {statusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Range */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            />
+            <span className="text-gray-400 text-sm">ถึง</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            />
+          </div>
+
+          {/* Clear */}
+          {hasFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 px-3 py-2 text-gray-500 hover:text-red-500 text-sm transition-colors"
+            >
+              <X className="w-3.5 h-3.5" /> ล้างตัวกรอง
+            </button>
+          )}
+
+          {/* Result count */}
+          <span className="text-xs text-gray-400 ml-auto">
+            พบ {total} รายการ
+          </span>
+        </div>
       </div>
 
       {receivings.length > 0 ? (
@@ -89,11 +200,11 @@ export default function GoodsReceivingPage() {
                   </div>
                   <span className="text-xs text-gray-400">{totalReceived}/{totalItems}</span>
                 </div>
-                {gr.status === "PENDING" && (
+                {(gr.status === "PENDING" || gr.status === "INSPECTING") && (
                   <div className="mt-3 flex justify-end">
                     <Link href={`/goods-receiving/${gr.id}`}
                       className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-medium hover:bg-emerald-100 transition-colors">
-                      <CheckCircle className="w-3 h-3" /> เริ่มตรวจรับ
+                      <CheckCircle className="w-3 h-3" /> {gr.status === "PENDING" ? "เริ่มตรวจรับ" : "ตรวจรับต่อ"}
                     </Link>
                   </div>
                 )}
@@ -103,7 +214,7 @@ export default function GoodsReceivingPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400 shadow-sm">
-          ยังไม่มีใบรับสินค้า
+          {hasFilters ? "ไม่พบรายการที่ตรงกับตัวกรอง" : "ยังไม่มีใบรับสินค้า"}
         </div>
       )}
 

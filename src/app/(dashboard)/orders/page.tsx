@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Printer } from "lucide-react";
 import { getOrders } from "@/actions/data";
 import { updateOrderStatus } from "@/actions/mutations";
 import { formatCurrency, formatDateShort } from "@/lib/utils";
 import Pagination from "@/components/ui/Pagination";
+import Link from "next/link";
 
 const statusConfig: Record<string, { label: string; color: string; next?: string; nextLabel?: string }> = {
   RECEIVED: { label: "รับแล้ว", color: "bg-yellow-100 text-yellow-700", next: "PREPARING", nextLabel: "เริ่มจัดเตรียม" },
@@ -80,7 +81,11 @@ export default function OrdersPage() {
               const config = statusConfig[order.status] || { label: order.status, color: "bg-gray-100 text-gray-700" };
               return (
                 <tr key={order.id} className="border-b border-gray-50 hover:bg-blue-50/50 transition-colors">
-                  <td className="py-3.5 px-5 font-medium text-blue-600">{order.orderNumber}</td>
+                  <td className="py-3.5 px-5 font-medium text-blue-600">
+                    <Link href={`/orders/${order.id}`} className="hover:underline">
+                      {order.orderNumber}
+                    </Link>
+                  </td>
                   <td className="py-3.5 px-5">
                     <p className="font-medium text-gray-900">{order.customerName}</p>
                     <p className="text-xs text-gray-400">{order.customerPhone || "-"}</p>
@@ -109,6 +114,12 @@ export default function OrdersPage() {
                           ยกเลิก
                         </button>
                       )}
+                      <button onClick={() => window.open(`/invoice/${order.id}`, '_blank')}
+                        className="p-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors group"
+                        title="พิมพ์ใบแจ้งหนี้"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>

@@ -7,6 +7,16 @@ import { getSession } from "@/lib/access-control";
 // PRODUCT DETAIL
 // ============================================================
 
+export async function getUniqueUnitNames(companyId: string) {
+  const units = await prisma.unitConversion.findMany({
+    where: { productVariant: { product: { companyId } } },
+    select: { unitName: true },
+    distinct: ['unitName'],
+    orderBy: { unitName: "asc" },
+  });
+  return units.map((u: any) => u.unitName);
+}
+
 export async function getProductById(productId: string) {
   const user = await getSession();
   if (!user) return null;
@@ -45,11 +55,22 @@ export async function updateVariant(variantId: string, data: {
   return prisma.productVariant.update({ where: { id: variantId }, data });
 }
 
+export async function createVariant(productId: string, data: {
+  name: string; sku: string; price: number; cost: number;
+  size?: string; color?: string; material?: string; barcode?: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+  return prisma.productVariant.create({
+    data: { ...data, productId },
+  });
+}
+
 // ============================================================
 // PRODUCT SET CRUD
 // ============================================================
 
-export async function getProductSets() {
+export async function getProductSets(categoryId?: string) {
   const user = await getSession();
   if (!user) return [];
 
@@ -58,8 +79,20 @@ export async function getProductSets() {
       ? {}
       : { companyId: user.companyId! };
 
+  const where: any = { ...companyFilter, isActive: true };
+  if (categoryId) {
+    // A Set is in a category if at least one of its variants belongs to a product in that category
+    where.items = {
+      some: {
+        productVariant: {
+          product: { categoryId: categoryId }
+        }
+      }
+    };
+  }
+
   return prisma.productSet.findMany({
-    where: { ...companyFilter, isActive: true },
+    where,
     include: {
       company: { select: { name: true } },
       items: {
@@ -161,7 +194,7 @@ export async function deleteUnitConversion(id: string) {
 // PRODUCTS WITH UNITS (for product page)
 // ============================================================
 
-export async function getProductsWithUnits(page = 1, pageSize = 20, search = "") {
+export async function getProductsWithUnits(page = 1, pageSize = 20, search = "", categoryId = "") {
   const user = await getSession();
   if (!user) return { data: [], total: 0, totalPages: 0, page: 1 };
 
@@ -171,6 +204,8 @@ export async function getProductsWithUnits(page = 1, pageSize = 20, search = "")
       : { companyId: user.companyId! };
 
   const where: any = { ...companyFilter, isActive: true };
+  if (categoryId) where.categoryId = categoryId;
+  
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },

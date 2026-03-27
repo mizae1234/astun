@@ -2,18 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { GitBranch, Plus, Search, MapPin, Pencil, X, Save } from "lucide-react";
-import { getBranches } from "@/actions/data";
+import { getBranches, getCompanies } from "@/actions/data";
 import { createBranch, updateBranch } from "@/actions/mutations";
 import { useRouter } from "next/navigation";
 
 export default function BranchesPage() {
   const router = useRouter();
   const [branches, setBranches] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [editBranch, setEditBranch] = useState<any>(null);
+  const [newBranch, setNewBranch] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const load = () => getBranches().then((b: any) => setBranches(b));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    getCompanies().then((c: any) => setCompanies(c));
+  }, []);
 
   const handleSave = async () => {
     if (!editBranch) return;
@@ -30,6 +35,23 @@ export default function BranchesPage() {
     finally { setLoading(false); }
   };
 
+  const handleCreate = async () => {
+    if (!newBranch?.name || !newBranch?.code || !newBranch?.companyId) return;
+    setLoading(true);
+    try {
+      await createBranch({
+        name: newBranch.name,
+        code: newBranch.code,
+        companyId: newBranch.companyId,
+        address: newBranch.address || "",
+        phone: newBranch.phone || "",
+      });
+      setNewBranch(null);
+      load();
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -37,6 +59,10 @@ export default function BranchesPage() {
           <h2 className="text-xl font-bold text-gray-900">รายการสาขา</h2>
           <p className="text-sm text-gray-500">จัดการสาขาทั้งหมดของบริษัท</p>
         </div>
+        <button onClick={() => setNewBranch({ name: "", code: "", companyId: companies[0]?.id || "", address: "", phone: "" })}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
+          <Plus className="w-4 h-4" /> เพิ่มสาขา
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -125,6 +151,62 @@ export default function BranchesPage() {
               <button onClick={handleSave} disabled={loading}
                 className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
                 <Save className="w-4 h-4" /> {loading ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Branch Modal */}
+      {newBranch && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setNewBranch(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">➕ เพิ่มสาขาใหม่</h3>
+              <button onClick={() => setNewBranch(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">บริษัท *</label>
+                <select value={newBranch.companyId} onChange={(e) => setNewBranch({ ...newBranch, companyId: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                  {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">ชื่อสาขา *</label>
+                  <input value={newBranch.name} onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
+                    placeholder="เช่น สาขาพระราม 2"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">รหัสสาขา *</label>
+                  <input value={newBranch.code} onChange={(e) => setNewBranch({ ...newBranch, code: e.target.value })}
+                    placeholder="เช่น BR-003"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">ที่อยู่</label>
+                <textarea value={newBranch.address} onChange={(e) => setNewBranch({ ...newBranch, address: e.target.value })}
+                  rows={3} placeholder="ที่อยู่เต็ม (ใช้เป็นจุดเริ่มต้นเส้นทางจัดส่ง)"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">โทรศัพท์</label>
+                <input value={newBranch.phone} onChange={(e) => setNewBranch({ ...newBranch, phone: e.target.value })}
+                  placeholder="เช่น 02-XXX-XXXX"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setNewBranch(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50">ยกเลิก</button>
+              <button onClick={handleCreate} disabled={loading || !newBranch.name || !newBranch.code}
+                className="flex-[2] py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center gap-2">
+                <Plus className="w-4 h-4" /> {loading ? "กำลังบันทึก..." : "เพิ่มสาขา"}
               </button>
             </div>
           </div>

@@ -103,7 +103,7 @@ export async function getDashboardStats() {
   };
 }
 
-export async function getProducts() {
+export async function getProducts(categoryId?: string) {
   const user = await getSession();
   if (!user) return [];
 
@@ -112,8 +112,11 @@ export async function getProducts() {
       ? {}
       : { companyId: user.companyId! };
 
+  const where: any = { ...companyFilter, isActive: true };
+  if (categoryId) where.categoryId = categoryId;
+
   return prisma.product.findMany({
-    where: { ...companyFilter, isActive: true },
+    where,
     include: {
       category: { select: { name: true } },
       company: { select: { name: true } },
@@ -214,6 +217,24 @@ export async function getIntercompanyTransactions() {
   });
 }
 
+export async function getOrderById(orderId: string) {
+  const user = await getSession();
+  if (!user) return null;
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: { include: { productVariant: { include: { product: true } } } },
+      customer: true
+    }
+  });
+
+  if (!order) return null;
+  if (user.role !== "SUPER_ADMIN" && user.companyId !== order.companyId) return null;
+
+  return order;
+}
+
 export async function getOrders(page = 1, pageSize = 20, search = "") {
   const user = await getSession();
   if (!user) return { data: [], total: 0, totalPages: 0, page: 1 };
@@ -258,6 +279,16 @@ export async function getCompanies() {
     include: {
       _count: { select: { branches: true, users: true, products: true } },
     },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function getCategories() {
+  const user = await getSession();
+  if (!user) return [];
+  const companyFilter = user.role === "SUPER_ADMIN" || user.role === "OWNER" ? {} : { companyId: user.companyId! };
+  return prisma.category.findMany({
+    where: { ...companyFilter },
     orderBy: { name: "asc" },
   });
 }

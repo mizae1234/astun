@@ -26,6 +26,26 @@ export async function searchCustomerByPhone(phone: string, companyId: string) {
 }
 
 /**
+ * Search customers by phone number (returns up to 5 matches for autocomplete)
+ */
+export async function searchCustomersByPhone(phone: string, companyId: string) {
+  const user = await getSession();
+  if (!user || !phone || phone.length < 3) return [];
+
+  const customers = await prisma.customer.findMany({
+    where: {
+      phone: { contains: phone },
+      companyId,
+      isActive: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+  });
+
+  return customers;
+}
+
+/**
  * Upsert customer — create or update by phone + companyId
  * Called automatically when creating an order
  */

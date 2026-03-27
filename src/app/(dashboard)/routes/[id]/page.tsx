@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import {
   Truck, MapPin, User, Clock, GitBranch, ArrowLeft, Phone,
-  CheckCircle, Package, Play, CircleCheck, XCircle, Calendar
+  CheckCircle, Package, Play, CircleCheck, XCircle, Calendar, Printer
 } from "lucide-react";
 import { getDeliveryTripById, startTrip, completeTrip, updateStopStatus } from "@/actions/delivery-trip";
 import { formatDateShort, formatCurrency } from "@/lib/utils";
@@ -183,7 +183,15 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                           </div>
                           <p className="text-sm text-blue-600 font-medium">{order.orderNumber}</p>
                         </div>
-                        <p className="text-sm font-bold text-gray-900">{formatCurrency(order.totalAmount)}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-gray-900">{formatCurrency(order.totalAmount)}</p>
+                          <button onClick={() => window.open(`/invoice/${order.id}`, '_blank')}
+                            className="p-1 px-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-1 text-[10px] transition-colors"
+                            title="พิมพ์ใบแจ้งหนี้"
+                          >
+                            <Printer className="w-3 h-3" /> พิมพ์บิล
+                          </button>
+                        </div>
                       </div>
 
                       {order.customerAddress && (

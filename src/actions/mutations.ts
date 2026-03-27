@@ -58,8 +58,12 @@ export async function createOrder(data: {
       },
     });
     if (!stock || stock.quantity < item.quantity) {
-      const variant = await prisma.productVariant.findUnique({ where: { id: item.productVariantId } });
-      throw new Error(`สต็อกไม่เพียงพอ: ${variant?.name || item.productVariantId} (ต้องการ ${item.quantity}, มี ${stock?.quantity || 0})`);
+      const variant = await prisma.productVariant.findUnique({
+        where: { id: item.productVariantId },
+        include: { product: true },
+      });
+      const itemName = variant ? `${variant.product.name} - ${variant.name}` : item.productVariantId;
+      throw new Error(`สต็อกไม่เพียงพอ: ${itemName} (ต้องการ ${item.quantity}, มี ${stock?.quantity || 0})`);
     }
   }
 
@@ -123,6 +127,126 @@ export async function createOrder(data: {
   return { success: true, orderId: order.id, orderNumber: order.orderNumber };
 }
 
+export async function updateOrder(orderId: string, data: {
+  customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  items: { productVariantId: string; quantity: number; unitPrice: number; warehouseId?: string }[];
+  note?: string;
+  discount?: number;
+  discountType?: string;
+  addonAmount?: number;
+  addonLabel?: string;
+  paymentMethod?: string;
+  dueDate?: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error("Unauthorized");
+  if (user.role === "OWNER") throw new Error("OWNER ไม่สามารถแก้ไขข้อมูลได้");
+
+  const existingOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!existingOrder) throw new Error("ไม่พบคำสั่งซื้อ");
+  if (user.role !== "SUPER_ADMIN" && user.companyId !== existingOrder.companyId) {
+    throw new Error("ไม่มีสิทธิ์แก้ไขคำสั่งซื้อนี้");
+  }
+
+  // Only allow editing if status is RECEIVED
+  if (existingOrder.status !== "RECEIVED") {
+    throw new Error("ไม่สามารถแก้ไขคำสั่งซื้อที่ดำเนินการไปแล้วได้");
+  }
+
+  const subtotal = data.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+
+  let discountValue = 0;
+  if (data.discount && data.discount > 0) {
+    discountValue = data.discountType === "percent"
+      ? subtotal * (data.discount / 100)
+      : data.discount;
+  }
+  const addonAmount = data.addonAmount || 0;
+  const totalAmount = Math.max(0, subtotal - discountValue + addonAmount);
+
+  await prisma.$transaction(async (tx: any) => {
+    // 1. Restore stock for existing items
+    for (const oldItem of existingOrder.items) {
+      const whId = existingOrder.warehouseId;
+      await tx.stock.updateMany({
+        where: { productVariantId: oldItem.productVariantId, warehouseId: whId },
+        data: { quantity: { increment: oldItem.quantity } },
+      });
+    }
+
+    // 2. Check and deduct stock for new items
+    for (const item of data.items) {
+      const whId = item.warehouseId || existingOrder.warehouseId;
+      const stock = await tx.stock.findUnique({
+        where: {
+          productVariantId_warehouseId: { productVariantId: item.productVariantId, warehouseId: whId },
+        },
+      });
+      if (!stock || stock.quantity < item.quantity) {
+        const variant = await tx.productVariant.findUnique({
+          where: { id: item.productVariantId },
+          include: { product: true },
+        });
+        const itemName = variant ? `${variant.product.name} - ${variant.name}` : item.productVariantId;
+        throw new Error(`สต็อกไม่เพียงพอสำหรับ: ${itemName} (ต้องการ ${item.quantity}, มี ${stock?.quantity || 0})`);
+      }
+      await tx.stock.update({
+        where: { id: stock.id },
+        data: { quantity: { decrement: item.quantity } },
+      });
+    }
+
+    // 3. Upsert customer if changed
+    let customerId = existingOrder.customerId;
+    if (data.customerPhone) {
+      const customer = await tx.customer.upsert({
+        where: { companyId_phone: { companyId: existingOrder.companyId, phone: data.customerPhone } },
+        update: { name: data.customerName, address: data.customerAddress },
+        create: { phone: data.customerPhone, name: data.customerName, address: data.customerAddress, companyId: existingOrder.companyId },
+      });
+      customerId = customer.id;
+    }
+
+    // 4. Update Order and Items
+    await tx.orderItem.deleteMany({ where: { orderId: existingOrder.id } });
+    
+    await tx.order.update({
+      where: { id: existingOrder.id },
+      data: {
+        customerId,
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        customerAddress: data.customerAddress,
+        subtotal,
+        discount: discountValue,
+        discountType: data.discountType,
+        addonAmount,
+        addonLabel: data.addonLabel,
+        totalAmount,
+        paymentMethod: data.paymentMethod || "CASH",
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        note: data.note,
+        items: {
+          create: data.items.map((item) => ({
+            productVariantId: item.productVariantId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.unitPrice * item.quantity,
+          })),
+        },
+      },
+    });
+  });
+
+  return { success: true };
+}
+
 export async function updateOrderStatus(orderId: string, newStatus: string) {
   const user = await getSession();
   if (!user) throw new Error("Unauthorized");
@@ -154,25 +278,30 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
     throw new Error(`ไม่สามารถเปลี่ยนสถานะจาก ${order.status} เป็น ${newStatus}`);
   }
 
-  // If cancelling, restore stock
+  // If cancelling, ensure atomic transaction
   if (newStatus === "CANCELLED") {
-    for (const item of order.items) {
-      await prisma.stock.update({
-        where: {
-          productVariantId_warehouseId: {
+    await prisma.$transaction(async (tx: any) => {
+      for (const item of order.items) {
+        // We use updateMany instead of update to prevent crashes if the stock record is missing
+        await tx.stock.updateMany({
+          where: {
             productVariantId: item.productVariantId,
             warehouseId: order.warehouseId,
           },
-        },
-        data: { quantity: { increment: item.quantity } },
+          data: { quantity: { increment: item.quantity } },
+        });
+      }
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: newStatus },
       });
-    }
+    });
+  } else {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: newStatus as "RECEIVED" | "PREPARING" | "READY" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED" },
+    });
   }
-
-  await prisma.order.update({
-    where: { id: orderId },
-    data: { status: newStatus as "RECEIVED" | "PREPARING" | "READY" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED" },
-  });
 
   return { success: true };
 }
