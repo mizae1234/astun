@@ -133,7 +133,7 @@ export default function SalesReportPage() {
                       <div key={d.date} className="relative flex-1 flex flex-col items-center justify-end h-full group">
                         <div 
                           className="w-full max-w-[20px] bg-blue-500 rounded-t-sm hover:bg-blue-600 transition-colors z-10"
-                          style={{ height: \`\${Math.max(1, heightPercent)}%\` }}
+                          style={{ height: `${Math.max(1, heightPercent)}%` }}
                         ></div>
                         {showLabel && (
                           <span className="absolute -bottom-5 text-[9px] text-gray-400 rotate-45 transform origin-top-left">
