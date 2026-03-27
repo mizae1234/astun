@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Truck, MapPin, CheckCircle, Plus, Navigation, ArrowUp, ArrowDown, Clock, Route, Sparkles, Building2 } from "lucide-react";
 import { getDeliveryQueue } from "@/actions/goods-receiving";
 import { getPlannedTrips, addStopToTrip } from "@/actions/delivery-trip";
-import { optimizeDeliveryRoute, suggestDeliveryOrders } from "@/actions/route-optimize";
+import { optimizeDeliveryRoute, suggestDeliveryOrders, sortOrdersByDistance } from "@/actions/route-optimize";
 import { getBranches } from "@/actions/data";
 import { formatCurrency, formatDateShort } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,7 @@ export default function DeliveryQueuePage() {
   const [loading, setLoading] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [sortingLeft, setSortingLeft] = useState(false);
   const [error, setError] = useState("");
   const [routeInfo, setRouteInfo] = useState<{ totalDistance: string; totalDuration: string; reasoning?: string; legs: any[] } | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<string>("");
@@ -51,6 +52,39 @@ export default function DeliveryQueuePage() {
       [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
       return arr;
     });
+  };
+
+  // Sort ALL ready orders by distance from origin
+  const handleSortReadyOrders = async () => {
+    if (!originAddress) {
+      setError("กรุณาเลือกสาขาต้นทางเพื่อคำนวณระยะทางก่อน");
+      return;
+    }
+    if (readyOrders.length < 2) return;
+
+    setSortingLeft(true);
+    setError("");
+
+    const ordersData = readyOrders.map((o: any) => ({
+      id: o.id,
+      customerName: o.customerName,
+      customerAddress: o.customerAddress || "",
+    }));
+
+    const result = await sortOrdersByDistance(originAddress, ordersData);
+
+    if ("error" in result) {
+      setError(result.error);
+    } else {
+      const sortedIds = result.sortedIds;
+      const newOrders = [...readyOrders].sort((a, b) => {
+        const ia = sortedIds.indexOf(a.id);
+        const ib = sortedIds.indexOf(b.id);
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      });
+      setReadyOrders(newOrders);
+    }
+    setSortingLeft(false);
   };
 
   // AI suggests which orders to select
@@ -230,6 +264,17 @@ export default function DeliveryQueuePage() {
                 เลือก {selectedOrders.length}
               </span>
             )}
+
+            <div className="ml-auto">
+              <button
+                onClick={handleSortReadyOrders}
+                disabled={sortingLeft || !selectedBranch || readyOrders.length < 2}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-50 flex-shrink-0 disabled:opacity-50 transition-colors shadow-sm"
+              >
+                <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+                {sortingLeft ? "กำลังเรียง..." : "เรียงตามระยะทางจากคลัง"}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2">

@@ -212,3 +212,42 @@ ${orders.map((o, i) => `${i}: [${o.orderNumber}] ${o.customerName} — "${o.cust
     return { error: "AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง" };
   }
 }
+
+// AI sorts ALL given orders based purely on logical driving distance from the origin branch
+export async function sortOrdersByDistance(
+  originAddress: string,
+  orders: { id: string; customerName: string; customerAddress: string }[]
+): Promise<{ sortedIds: string[] } | { error: string }> {
+  if (!API_KEY) return { error: "ยังไม่ได้ตั้งค่า API Key" };
+  if (orders.length === 0) return { error: "ไม่มี orders" };
+
+  const prompt = `คุณเป็นผู้เชี่ยวชาญด้านโลจิสติกส์ในประเทศไทย
+
+จุดเริ่มต้น: "${originAddress}"
+
+รายชื่อจุดส่ง:
+${orders.map((o) => `[ID: ${o.id}] "${o.customerAddress || o.customerName}"`).join("\n")}
+
+จงเรียงลำดับจุดส่งทั้งหมดข้างต้น โดยเริ่มจากจุดที่อยู่ใกล้และเดินทางจากจุดเริ่มต้นได้สะดวกที่สุด ไปยังจุดที่ไกลที่สุด
+
+ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown:
+{
+  "sortedIds": ["ID1", "ID2", "ID3", ...]
+}
+
+ห้ามตัด ID ใดๆ ออก ต้องเรียงให้ครบทุก ID จากข้อมูลด้านบน`;
+
+  const aiResult = await askGemini(prompt);
+  if (!aiResult) return { error: "ไม่สามารถเชื่อมต่อ Gemini AI ได้" };
+
+  try {
+    const cleaned = aiResult.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (!parsed.sortedIds || !Array.isArray(parsed.sortedIds)) {
+      return { error: "AI ตอบกลับไม่ครบถ้วน" };
+    }
+    return { sortedIds: parsed.sortedIds };
+  } catch {
+    return { error: "AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง" };
+  }
+}
