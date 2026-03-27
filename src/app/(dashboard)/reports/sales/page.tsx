@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { TrendingUp, Calendar, DollarSign, ShoppingCart, Package, BarChart3 } from "lucide-react";
+import { TrendingUp, Calendar, DollarSign, ShoppingCart, Package, BarChart3, Store } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { getSalesReportData } from "@/actions/reports";
+import { getBranches } from "@/actions/data";
 
 export default function SalesReportPage() {
   const [data, setData] = useState<any>(null);
@@ -16,11 +17,18 @@ export default function SalesReportPage() {
   
   const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
+  
+  const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState("");
+
+  useEffect(() => {
+    getBranches().then(b => setBranches(b));
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await getSalesReportData(startDate, endDate);
+      const d = await getSalesReportData(startDate, endDate, selectedBranch || undefined);
       setData(d);
     } catch (e) {
       console.error(e);
@@ -40,21 +48,41 @@ export default function SalesReportPage() {
           <h1 className="text-2xl font-bold text-gray-900">รายงานยอดขาย</h1>
           <p className="text-sm text-gray-500 mt-1">สรุปยอดขายแยกตามวันและสินค้าขายดี (เฉพาะรายการที่จัดส่งแล้ว)</p>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm">
-          <Calendar className="w-4 h-4 text-gray-400 ml-2" />
-          <input 
-            type="date" 
-            value={startDate} 
-            onChange={(e) => setStartDate(e.target.value)}
-            className="text-sm outline-none px-2 text-gray-700 bg-transparent"
-          />
-          <span className="text-gray-300">-</span>
-          <input 
-            type="date" 
-            value={endDate} 
-            onChange={(e) => setEndDate(e.target.value)}
-            className="text-sm outline-none px-2 text-gray-700 bg-transparent"
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Branch Filter */}
+          <div className="flex items-center gap-2 bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm px-3">
+            <Store className="w-4 h-4 text-gray-400" />
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="text-sm outline-none bg-transparent text-gray-700 min-w-[120px] max-w-[200px]"
+            >
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex items-center gap-2 bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm">
+            <Calendar className="w-4 h-4 text-gray-400 ml-2" />
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)}
+              className="text-sm outline-none px-2 text-gray-700 bg-transparent"
+            />
+            <span className="text-gray-300">-</span>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)}
+              className="text-sm outline-none px-2 text-gray-700 bg-transparent"
+            />
+          </div>
         </div>
       </div>
       

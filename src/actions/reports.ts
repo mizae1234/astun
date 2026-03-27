@@ -3,7 +3,7 @@
 import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/access-control";
 
-export async function getSalesReportData(startDateIso: string, endDateIso: string) {
+export async function getSalesReportData(startDateIso: string, endDateIso: string, branchId?: string) {
   const user = await getSession();
   if (!user) return null;
 
@@ -11,10 +11,14 @@ export async function getSalesReportData(startDateIso: string, endDateIso: strin
   const endDate = new Date(endDateIso);
   endDate.setHours(23, 59, 59, 999); // end of day
 
-  const companyFilter =
+  const companyFilter: any =
     user.role === "SUPER_ADMIN" || user.role === "OWNER"
       ? {}
       : { companyId: user.companyId! };
+
+  if (branchId) {
+    companyFilter.branchId = branchId;
+  }
 
   // Fetch all delivered orders in date range
   const orders = await prisma.order.findMany({
